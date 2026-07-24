@@ -1,0 +1,228 @@
+.showcase-shell-variants {
+  display: grid;
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+.showcase-chart-composition {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+.showcase-volume-list {
+  max-block-size: 34rem;
+  margin-block-start: var(--space-4);
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+.button-danger {
+  color: var(--status-error-fg);
+  background: var(--status-error-bg);
+  border-color: var(--status-error-fg);
+}
+.button-success {
+  color: var(--status-success-fg);
+  background: var(--status-success-bg);
+  border-color: var(--status-success-fg);
+}
+.showcase-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--text-primary) 45%, transparent);
+}
+.showcase-modal {
+  display: grid;
+  gap: var(--space-4);
+  inline-size: min(100%, 30rem);
+  padding: var(--space-5);
+  color: var(--text-primary);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-overlay);
+  box-shadow: var(--shadow-overlay);
+}
+.showcase-modal label {
+  display: grid;
+  gap: var(--space-2);
+}
+.showcase-modal input {
+  min-block-size: var(--control-target);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+}
+.showcase-shell-mini nav {
+  display: flex;
+  gap: var(--space-2);
+}
+.showcase-shell-mini a {
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--space-3);
+  color: var(--text-secondary);
+  text-decoration: none;
+  border-radius: var(--radius-control);
+}
+.showcase-shell-mini a[aria-current="page"] {
+  color: var(--interactive-primary);
+  background: var(--surface-interactive);
+}
+.showcase-feedback-grid,
+.showcase-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-block-start: var(--space-4);
+}
+.showcase-chart-grid figure {
+  display: grid;
+  gap: var(--space-3);
+  min-inline-size: 0;
+  margin: 0;
+}
+.showcase-data-rows {
+  list-style: none;
+}
+.showcase-data-rows li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  padding-block: var(--space-3);
+  border-block-start: 1px solid var(--border-subtle);
+}
+.showcase-dialog > summary {
+  cursor: pointer;
+  color: var(--interactive-primary);
+  font-weight: 600;
+}
+.showcase-dialog [role="dialog"] {
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: 30rem;
+  margin-block-start: var(--space-3);
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-overlay);
+}
+
+.metric-state {
+  min-block-size: var(--type-metric-line);
+  font-size: var(--type-card-title-size);
+  font-weight: 600;
+  line-height: var(--type-metric-line);
+}
+.metric-pending {
+  color: var(--status-pending-fg);
+}
+.metric-error {
+  color: var(--status-error-fg);
+}
+
+.showcase-evidence-matrix {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.showcase-evidence-matrix .evidence-rail {
+  min-inline-size: 0;
+}
+.showcase-evidence-matrix .evidence-grid {
+  grid-template-columns: 1fr;
+}
+.showcase-evidence-matrix .evidence-cell + .evidence-cell {
+  border-block-start: 1px solid var(--border-subtle);
+  border-inline-start: 0;
+}
+.showcase-evidence-matrix .evidence-disclosure > summary {
+  display: none;
+}
+.showcase-evidence-matrix .evidence-disclosure:not([open]) > .evidence-grid {
+  display: grid;
+}
+
+.chart-frame-panel {
+  min-inline-size: 0;
+}
+.chart-frame-panel > .section-heading h3 {
+  font-size: var(--type-card-title-size);
+  line-height: var(--type-card-title-line);
+}
+.chart-frame-description {
+  color: var(--text-secondary);
+  font-size: var(--type-label-size);
+}
+.chart-frame-visual {
+  min-block-size: 8rem;
+  padding: var(--space-3);
+  background: var(--surface-canvas);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+}
+.chart-frame-visual-partial {
+  border-color: var(--status-partial-fg);
+}
+.chart-frame-line {
+  display: block;
+  inline-size: 100%;
+  block-size: 7rem;
+  overflow: visible;
+}
+.chart-line-path {
+  fill: none;
+  stroke: var(--interactive-primary);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.chart-frame-bar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: var(--space-3);
+  block-size: 7rem;
+}
+.chart-bar-value {
+  flex: 1 1 0;
+  max-inline-size: 2.5rem;
+  min-block-size: 0.35rem;
+  background: var(--interactive-primary);
+  border-radius: var(--radius-control) var(--radius-control) 0 0;
+}
+.chart-frame-stacked {
+  display: flex;
+  block-size: 2.75rem;
+  overflow: hidden;
+  background: var(--surface-interactive);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+}
+.chart-stacked-value {
+  min-inline-size: 0;
+  flex-basis: 0;
+}
+.chart-stacked-value-1 {
+  background: var(--status-success-bg);
+}
+.chart-stacked-value-2 {
+  background: var(--surface-interactive);
+}
+.chart-stacked-value-3 {
+  background: var(--status-error-bg);
+}
+.chart-frame-state {
+  display: grid;
+  align-content: center;
+  gap: var(--space-3);
+  min-block-size: 8rem;
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  background: var(--surface-canvas);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-control);
+}

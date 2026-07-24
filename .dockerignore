@@ -1,0 +1,13 @@
+.git
+.github
+.gjc
+.next
+.omo
+.pytest_cache
+.ruff_cache
+.venv
+**/__pycache__
+**/.next
+**/node_modules
+node_modules
+*.log

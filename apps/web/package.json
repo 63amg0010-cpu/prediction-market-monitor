@@ -1,0 +1,45 @@
+{
+  "name": "@prediction-market/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js dashboard boundary for the prediction-market monitor.",
+  "engines": {
+    "node": "22.14.0",
+    "pnpm": "9.15.4"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run --config src/vitest.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "doctor": "react-doctor --json",
+    "generate:api": "openapi-typescript ../api/openapi.json -o src/lib/api.generated.ts && node scripts/normalize-api-generated.mjs src/lib/api.generated.ts",
+    "check:api": "pnpm generate:api && git diff --exit-code -- src/lib/api.generated.ts"
+  },
+  "dependencies": {
+    "@phosphor-icons/react": "2.1.10",
+    "ky": "1.7.5",
+    "next": "15.5.20",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "server-only": "0.0.1",
+    "zod": "4.1.12"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.0.6",
+    "@testing-library/jest-dom": "7.0.0",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "22.15.29",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "jsdom": "29.1.1",
+    "openapi-typescript": "7.13.0",
+    "react-doctor": "0.8.3",
+    "react-grab": "0.1.48",
+    "react-scan": "0.5.7",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,108 @@
+schema: monitor.keywords
+version: "1.0.0"
+canonicalization: json-sort-keys-nfc-v1
+review_state: reviewed_vocabulary_only
+rule_sets:
+  - rule_set_id: prediction-market-core
+    version: "1.0.0"
+    rules:
+      - rule_id: prediction-market-en
+        phrase: prediction market
+        normalized_phrase: prediction market
+        language: en
+        match_type: contains
+      - rule_id: prediction-market-ko
+        phrase: 예측시장
+        normalized_phrase: 예측시장
+        language: ko
+        match_type: contains
+      - rule_id: polymarket-en
+        phrase: Polymarket
+        normalized_phrase: polymarket
+        language: en
+        match_type: contains
+      - rule_id: polymarket-ko
+        phrase: 폴리마켓
+        normalized_phrase: 폴리마켓
+        language: ko
+        match_type: contains
+      - rule_id: kalshi-en
+        phrase: Kalshi
+        normalized_phrase: kalshi
+        language: en
+        match_type: contains
+      - rule_id: kalshi-ko
+        phrase: 칼시
+        normalized_phrase: 칼시
+        language: ko
+        match_type: contains
+      - rule_id: implied-probability-en
+        phrase: implied probability
+        normalized_phrase: implied probability
+        language: en
+        match_type: contains
+      - rule_id: probability-ko
+        phrase: 확률
+        normalized_phrase: 확률
+        language: ko
+        match_type: contains
+      - rule_id: liquidity-en
+        phrase: liquidity
+        normalized_phrase: liquidity
+        language: en
+        match_type: contains
+      - rule_id: liquidity-ko
+        phrase: 유동성
+        normalized_phrase: 유동성
+        language: ko
+        match_type: contains
+      - rule_id: volume-en
+        phrase: trading volume
+        normalized_phrase: trading volume
+        language: en
+        match_type: contains
+      - rule_id: volume-ko
+        phrase: 거래량
+        normalized_phrase: 거래량
+        language: ko
+        match_type: contains
+      - rule_id: settlement-en
+        phrase: settlement
+        normalized_phrase: settlement
+        language: en
+        match_type: contains
+      - rule_id: settlement-ko
+        phrase: 정산
+        normalized_phrase: 정산
+        language: ko
+        match_type: contains
+      - rule_id: oracle-en
+        phrase: oracle
+        normalized_phrase: oracle
+        language: en
+        match_type: contains
+      - rule_id: oracle-ko
+        phrase: 오라클
+        normalized_phrase: 오라클
+        language: ko
+        match_type: contains
+      - rule_id: election-en
+        phrase: election prediction
+        normalized_phrase: election prediction
+        language: en
+        match_type: contains
+      - rule_id: election-ko
+        phrase: 선거 예측
+        normalized_phrase: 선거 예측
+        language: ko
+        match_type: contains
+      - rule_id: regulation-en
+        phrase: prediction market regulation
+        normalized_phrase: prediction market regulation
+        language: en
+        match_type: contains
+      - rule_id: regulation-ko
+        phrase: 예측시장 규제
+        normalized_phrase: 예측시장 규제
+        language: ko
+        match_type: contains

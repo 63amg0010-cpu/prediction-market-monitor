@@ -1,0 +1,76 @@
+name: migrate
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type migrate-production to proceed
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    if: ${{ inputs.confirm == 'migrate-production' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production-migration
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.5.30"
+      - run: uv sync --package monitor-api --locked
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: Validate database URL drivers without disclosure
+        shell: bash
+        run: |
+          case "$MIGRATION_DATABASE_URL" in
+            postgresql+asyncpg://*) ;;
+            *) echo "MIGRATION_DATABASE_URL must use postgresql+asyncpg://" >&2; exit 1 ;;
+          esac
+          case "$PG_DUMP_DATABASE_URL" in
+            postgresql://*|postgres://*) ;;
+            *) echo "PG_DUMP_DATABASE_URL must use a native PostgreSQL scheme" >&2; exit 1 ;;
+          esac
+          case "$PG_RESTORE_DATABASE_URL" in
+            postgresql://*|postgres://*) ;;
+            *) echo "PG_RESTORE_DATABASE_URL must use a native PostgreSQL scheme" >&2; exit 1 ;;
+          esac
+        env:
+          MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+          PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
+          PG_RESTORE_DATABASE_URL: ${{ secrets.PG_RESTORE_DATABASE_URL }}
+      - name: Export pre-migration backup
+        run: pg_dump --format=custom --no-owner --no-acl --file="$RUNNER_TEMP/pre-migration.dump" "$PG_DUMP_DATABASE_URL"
+        env:
+          PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
+      - name: Check current migration revision
+        run: uv run --package monitor-api alembic -c apps/api/alembic.ini current
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Check repository migration head
+        run: uv run --package monitor-api alembic -c apps/api/alembic.ini heads
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Apply reviewed migrations
+        run: uv run --package monitor-api alembic -c apps/api/alembic.ini upgrade head
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Verify migrated revision
+        run: uv run --package monitor-api alembic -c apps/api/alembic.ini current
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Roll back failed migration from ephemeral backup
+        if: ${{ failure() }}
+        run: |
+          if [ ! -s "$RUNNER_TEMP/pre-migration.dump" ]; then
+            echo "No pre-migration backup exists; automatic restore is unavailable." >&2
+            exit 1
+          fi
+          pg_restore --clean --if-exists --no-owner --no-acl --dbname "$PG_RESTORE_DATABASE_URL" "$RUNNER_TEMP/pre-migration.dump"
+        env:
+          PG_RESTORE_DATABASE_URL: ${{ secrets.PG_RESTORE_DATABASE_URL }}

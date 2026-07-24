@@ -1,0 +1,25 @@
+schema: monitor.metrics
+version: "1.0.0"
+canonicalization: json-sort-keys-nfc-v1
+review_state: reviewed_v1
+storage_timezone: UTC
+report_timezone: Asia/Seoul
+report_day:
+  boundary: local_midnight
+  primary_days: 7
+  comparison_days: 7
+  comparison_relation: immediately_preceding
+comparison:
+  current_days: 7
+  previous_days: 7
+  zero_denominator: "null"
+delta:
+  zero_denominator: "null"
+engagement:
+  unknown_value: "null"
+  unknown_label: unknown
+  sum_when_no_known_values: "null"
+  null_is_not_zero: true
+  fields:
+    - comments_count
+    - upvote_or_score

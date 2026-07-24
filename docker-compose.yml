@@ -1,0 +1,82 @@
+name: prediction-market-monitor
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    environment:
+      DATABASE_URL: ${CONTAINER_DATABASE_URL:?CONTAINER_DATABASE_URL must be set}
+      API_BASE_URL: ${API_BASE_URL:?API_BASE_URL must be set}
+      WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:?WEB_PUBLIC_ORIGIN must be set}
+      MONITOR_SCOPE_VERSION: ${MONITOR_SCOPE_VERSION:?MONITOR_SCOPE_VERSION must be set}
+      SERVICE_TOKEN_KEY_ID: ${SERVICE_TOKEN_KEY_ID:?SERVICE_TOKEN_KEY_ID must be set}
+      SERVICE_TOKEN_ISSUER_PRIVATE_KEY: ${SERVICE_TOKEN_ISSUER_PRIVATE_KEY:?SERVICE_TOKEN_ISSUER_PRIVATE_KEY must be set}
+      SERVICE_TOKEN_ISSUER_PUBLIC_KEY: ${SERVICE_TOKEN_ISSUER_PUBLIC_KEY:?SERVICE_TOKEN_ISSUER_PUBLIC_KEY must be set}
+      BFF_CLIENT_CREDENTIAL: ${BFF_CLIENT_CREDENTIAL:?BFF_CLIENT_CREDENTIAL must be set}
+      BFF_CREDENTIAL_VERSION: ${BFF_CREDENTIAL_VERSION:?BFF_CREDENTIAL_VERSION must be set}
+      WORKER_BOOTSTRAP_SECRET: ${WORKER_BOOTSTRAP_SECRET:?WORKER_BOOTSTRAP_SECRET must be set}
+      WORKER_CREDENTIAL_VERSION: ${WORKER_CREDENTIAL_VERSION:?WORKER_CREDENTIAL_VERSION must be set}
+      CRON_SECRET: ${CRON_SECRET:?CRON_SECRET must be set}
+      ADMIN_PASSWORD_ARGON2ID_HASH: ${ADMIN_PASSWORD_ARGON2ID_HASH:?ADMIN_PASSWORD_ARGON2ID_HASH must be set}
+      SESSION_HMAC_SECRET: ${SESSION_HMAC_SECRET:?SESSION_HMAC_SECRET must be set}
+      GITHUB_REPOSITORY: ${GITHUB_REPOSITORY:?GITHUB_REPOSITORY must be set}
+      GITHUB_WORKFLOW_REFS: ${GITHUB_WORKFLOW_REFS:?GITHUB_WORKFLOW_REFS must be set}
+      GITHUB_ALLOWED_REFS: ${GITHUB_ALLOWED_REFS:?GITHUB_ALLOWED_REFS must be set}
+      GITHUB_ALLOWED_ENVIRONMENTS: ${GITHUB_ALLOWED_ENVIRONMENTS:?GITHUB_ALLOWED_ENVIRONMENTS must be set}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json, urllib.request; body=json.load(urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5)); raise SystemExit(0 if body.get('status') == 'ok' and body.get('db') == 'ok' else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: runtime
+    environment:
+      API_BASE_URL: ${CONTAINER_API_BASE_URL:?CONTAINER_API_BASE_URL must be set}
+      BFF_CLIENT_CREDENTIAL: ${BFF_CLIENT_CREDENTIAL:?BFF_CLIENT_CREDENTIAL must be set}
+      BFF_CREDENTIAL_VERSION: ${BFF_CREDENTIAL_VERSION:?BFF_CREDENTIAL_VERSION must be set}
+      VERCEL_DEPLOYMENT_ID: ${WEB_DEPLOYMENT_ID:?WEB_DEPLOYMENT_ID must be set}
+      WEB_PUBLIC_ORIGIN: ${WEB_PUBLIC_ORIGIN:?WEB_PUBLIC_ORIGIN must be set}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  postgres-data:

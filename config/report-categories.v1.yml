@@ -1,0 +1,103 @@
+schema: monitor.report-categories
+version: "1.0.0"
+canonicalization: json-sort-keys-nfc-v1
+review_state: reviewed_v1
+default_category: uncategorized
+categories:
+  - category_key: market
+    label: Market mechanics
+  - category_key: platform
+    label: Platform
+  - category_key: probability
+    label: Probability and pricing
+  - category_key: liquidity
+    label: Liquidity and volume
+  - category_key: settlement
+    label: Settlement and oracle
+  - category_key: event
+    label: Events and elections
+  - category_key: regulation
+    label: Regulation
+  - category_key: uncategorized
+    label: Uncategorized
+mappings:
+  - input_kind: rule
+    input_key: prediction-market-en
+    normalized_value: prediction market
+    category: market
+  - input_kind: rule
+    input_key: prediction-market-ko
+    normalized_value: 예측시장
+    category: market
+  - input_kind: rule
+    input_key: polymarket-en
+    normalized_value: polymarket
+    category: platform
+  - input_kind: rule
+    input_key: polymarket-ko
+    normalized_value: 폴리마켓
+    category: platform
+  - input_kind: rule
+    input_key: kalshi-en
+    normalized_value: kalshi
+    category: platform
+  - input_kind: rule
+    input_key: kalshi-ko
+    normalized_value: 칼시
+    category: platform
+  - input_kind: rule
+    input_key: implied-probability-en
+    normalized_value: implied probability
+    category: probability
+  - input_kind: rule
+    input_key: probability-ko
+    normalized_value: 확률
+    category: probability
+  - input_kind: rule
+    input_key: liquidity-en
+    normalized_value: liquidity
+    category: liquidity
+  - input_kind: rule
+    input_key: liquidity-ko
+    normalized_value: 유동성
+    category: liquidity
+  - input_kind: rule
+    input_key: volume-en
+    normalized_value: trading volume
+    category: liquidity
+  - input_kind: rule
+    input_key: volume-ko
+    normalized_value: 거래량
+    category: liquidity
+  - input_kind: rule
+    input_key: settlement-en
+    normalized_value: settlement
+    category: settlement
+  - input_kind: rule
+    input_key: settlement-ko
+    normalized_value: 정산
+    category: settlement
+  - input_kind: rule
+    input_key: oracle-en
+    normalized_value: oracle
+    category: settlement
+  - input_kind: rule
+    input_key: oracle-ko
+    normalized_value: 오라클
+    category: settlement
+  - input_kind: rule
+    input_key: election-en
+    normalized_value: election prediction
+    category: event
+  - input_kind: rule
+    input_key: election-ko
+    normalized_value: 선거 예측
+    category: event
+  - input_kind: rule
+    input_key: regulation-en
+    normalized_value: prediction market regulation
+    category: regulation
+  - input_kind: rule
+    input_key: regulation-ko
+    normalized_value: 예측시장 규제
+    category: regulation

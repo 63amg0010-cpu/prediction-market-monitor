@@ -1,0 +1,43 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": "t3_after_page_1",
+    "before": null,
+    "dist": 2,
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "alpha123",
+          "name": "t3_alpha123",
+          "subreddit": "Polymarket",
+          "subreddit_name_prefixed": "r/Polymarket",
+          "title": "Full prediction-market title",
+          "selftext": "Full body line one.\nFull body line two.",
+          "permalink": "/r/Polymarket/comments/alpha123/full_prediction_market_title/",
+          "created_utc": 1784570400.0,
+          "num_comments": 12,
+          "score": 34,
+          "author": "tests-only-private-author",
+          "author_fullname": "t2_tests_only"
+        }
+      },
+      {
+        "kind": "t3",
+        "data": {
+          "id": "beta456",
+          "name": "t3_beta456",
+          "subreddit": "Kalshi",
+          "subreddit_name_prefixed": "r/Kalshi",
+          "title": "Metrics unavailable",
+          "selftext": "The provider omitted engagement values.",
+          "permalink": "/r/Kalshi/comments/beta456/metrics_unavailable/",
+          "created_utc": 1784570460.0,
+          "num_comments": null,
+          "score": null,
+          "author": "tests-only-second-author"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+name: verify
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      authorize_private_minutes:
+        description: Authorize this one private-repository run against included minutes
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: independent-freshness-verifier
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ github.event.repository.private == false || (github.event_name == 'workflow_dispatch' && inputs.authorize_private_minutes == true) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    environment: production-verifier
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.5.30"
+          enable-cache: true
+      - run: uv sync --package monitor-api --locked
+      - name: Verify freshness through the scoped API
+        run: uv run --package monitor-api python -m app.collection.cli verify
+        env:
+          MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
+          MONITOR_SCOPE_VERSION: ${{ vars.MONITOR_SCOPE_VERSION }}

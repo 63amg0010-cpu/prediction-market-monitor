@@ -1,0 +1,113 @@
+schema: monitor.sources
+version: "1.0.0"
+canonicalization: json-sort-keys-nfc-v1
+scope_version: phase1-reviewed-v1
+review_state: blocked_pending_external_evidence
+budget_policy:
+  soft_limit: "0.70"
+  hard_limit: "0.80"
+  unit: fraction_of_free_quota
+  action_at_soft: reduce_scope
+  action_at_hard: skip_quota
+exclusivity:
+  group_id: toss-or-naver
+  source_ids:
+    - toss
+    - naver_finance
+  maximum_enabled: 1
+sources:
+  - source_id: reddit
+    provider: reddit
+    state: pending_evidence
+    enabled: false
+    scope:
+      subreddits:
+        - r/Polymarket
+        - r/Kalshi
+        - r/PredictionMarkets
+      gallery_ids: []
+      reviewed_route: null
+    authorization:
+      status: pending
+      evidence: []
+      effective_at: null
+      expires_at: null
+      revoked_at: null
+      permitted_methods: []
+      permitted_routes: []
+      purpose: null
+    limits:
+      requests_per_minute: 30
+      concurrency: 1
+      max_page_size: 20
+      max_accepted_per_run: 80
+      max_accepted_per_source_run: 20
+  - source_id: dcinside
+    provider: dcinside
+    state: pending_evidence
+    enabled: false
+    scope:
+      subreddits: []
+      gallery_ids: []
+      reviewed_route: null
+    authorization:
+      status: pending
+      evidence: []
+      effective_at: null
+      expires_at: null
+      revoked_at: null
+      permitted_methods: []
+      permitted_routes: []
+      purpose: null
+    limits:
+      requests_per_minute: 10
+      concurrency: 1
+      max_page_size: 20
+      max_accepted_per_run: 80
+      max_accepted_per_source_run: 20
+  - source_id: toss
+    provider: toss
+    state: pending_evidence
+    enabled: false
+    scope:
+      subreddits: []
+      gallery_ids: []
+      reviewed_route: null
+    authorization:
+      status: pending
+      evidence: []
+      effective_at: null
+      expires_at: null
+      revoked_at: null
+      permitted_methods: []
+      permitted_routes: []
+      purpose: null
+    limits:
+      requests_per_minute: 10
+      concurrency: 1
+      max_page_size: 20
+      max_accepted_per_run: 80
+      max_accepted_per_source_run: 20
+  - source_id: naver_finance
+    provider: naver_finance
+    state: pending_evidence
+    enabled: false
+    scope:
+      subreddits: []
+      gallery_ids: []
+      reviewed_route: null
+    authorization:
+      status: pending
+      evidence: []
+      effective_at: null
+      expires_at: null
+      revoked_at: null
+      permitted_methods: []
+      permitted_routes: []
+      purpose: null
+    limits:
+      requests_per_minute: 10
+      concurrency: 1
+      max_page_size: 20
+      max_accepted_per_run: 80
+      max_accepted_per_source_run: 20

@@ -1,0 +1,6 @@
+# Reviewed false positive: Python type annotation, not key material.
+apps/api/app/core/jwt.py:generic-api-key:109
+
+# Reviewed false positives: deterministic UUID idempotency fixtures.
+apps/api/tests/integration/test_collector_skip_api.py:generic-api-key:22
+apps/api/tests/integration/test_collector_skip_api.py:generic-api-key:54

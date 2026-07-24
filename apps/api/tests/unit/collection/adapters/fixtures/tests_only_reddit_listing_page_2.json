@@ -1,0 +1,26 @@
+{
+  "kind": "Listing",
+  "data": {
+    "after": null,
+    "before": "t3_before_page_2",
+    "dist": 1,
+    "children": [
+      {
+        "kind": "t3",
+        "data": {
+          "id": "gamma789",
+          "name": "t3_gamma789",
+          "subreddit": "PredictionMarkets",
+          "subreddit_name_prefixed": "r/PredictionMarkets",
+          "title": "Second page title",
+          "selftext": "Second page full body.",
+          "permalink": "/r/PredictionMarkets/comments/gamma789/second_page_title/",
+          "created_utc": 1784570520.0,
+          "num_comments": 2,
+          "score": 5,
+          "author": "tests-only-third-author"
+        }
+      }
+    ]
+  }
+}

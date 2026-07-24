@@ -1,0 +1,43 @@
+name: collect
+
+on:
+  schedule:
+    - cron: "17 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      command_id:
+        description: Existing durable command UUID for a manual dispatch
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: collector-control-plane
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    environment: production-collector
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          version: "0.5.30"
+          enable-cache: true
+      - run: uv sync --package monitor-api --locked
+      - name: Collect through the scoped API
+        run: uv run --package monitor-api python -m app.collection.cli collect
+        env:
+          MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
+          MONITOR_SCOPE_VERSION: ${{ vars.MONITOR_SCOPE_VERSION }}
+          MONITOR_DEPLOYMENT_ACTIVATION_AT: ${{ vars.MONITOR_DEPLOYMENT_ACTIVATION_AT }}
+          MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
+          MONITOR_COMMAND_ID: ${{ inputs.command_id }}
+          MONITOR_SOURCE_BINDINGS_JSON: ${{ secrets.MONITOR_SOURCE_BINDINGS_JSON }}
+          REDDIT_OAUTH_ACCESS_TOKEN: ${{ secrets.REDDIT_OAUTH_ACCESS_TOKEN }}
+          REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT }}

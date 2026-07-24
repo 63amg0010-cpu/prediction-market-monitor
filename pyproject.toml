@@ -1,0 +1,57 @@
+[project]
+name = "prediction-market-monitor"
+version = "0.1.0"
+description = "Control-plane workspace for a fail-closed prediction-market community monitor."
+requires-python = ">=3.12,<3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "basedpyright>=1.28,<2",
+    "pytest>=8.3,<9",
+    "pytest-asyncio>=0.25,<1",
+    "ruff>=0.9,<1",
+]
+
+[tool.uv]
+default-groups = ["dev"]
+
+[tool.uv.workspace]
+members = ["apps/api", "workers/codex-worker"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+src = ["apps/api/app", "apps/api/tests", "workers/codex-worker/src", "workers/codex-worker/tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["COM812", "ISC001", "D203", "D213", "CPY001", "FBT001", "FBT002", "TD002", "TD003", "FIX002"]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**/*.py" = ["S101", "ARG", "PLR2004", "SLF001", "D"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.12"
+pythonPlatform = "All"
+include = ["apps/api/app", "apps/api/tests", "workers/codex-worker/src", "workers/codex-worker/tests"]
+extraPaths = ["apps/api", "workers/codex-worker/src"]
+exclude = ["**/__pycache__", "**/.venv", "**/build", "**/dist"]
+reportUnusedCallResult = "warning"
+reportUnnecessaryTypeIgnoreComment = "error"
+reportUnusedVariable = "error"
+reportMissingParameterType = "error"
+reportPrivateUsage = "error"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["apps/api/tests", "workers/codex-worker/tests"]
+pythonpath = ["apps/api", "workers/codex-worker/src"]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+filterwarnings = ["error"]

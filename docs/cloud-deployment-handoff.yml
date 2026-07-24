@@ -1,0 +1,99 @@
+version: 1
+guide: docs/cloud-deployment-handoff.md
+phases:
+  - local_preflight
+  - github_public_repository
+  - github_actions_controls
+  - supabase_preview_and_production
+  - vercel_api_and_web_projects
+  - github_environments
+  - preview_migration_and_deploy
+  - protected_production_migration
+  - production_deploy
+  - postdeploy_and_schedules
+  - freshness_acceptance
+github:
+  environments:
+    - preview-deploy
+    - production-deploy
+    - production-migration
+    - production-collector
+    - production-verifier
+  workflow_secret_names:
+    - VERCEL_TOKEN
+    - VERCEL_ORG_ID
+    - VERCEL_API_PROJECT_ID
+    - VERCEL_WEB_PROJECT_ID
+    - MIGRATION_DATABASE_URL
+    - PG_DUMP_DATABASE_URL
+    - PG_RESTORE_DATABASE_URL
+    - MONITOR_SOURCE_BINDINGS_JSON
+    - REDDIT_OAUTH_ACCESS_TOKEN
+  oidc_workflow_refs:
+    - <owner>/<repository>/.github/workflows/collect.yml@refs/heads/main
+    - <owner>/<repository>/.github/workflows/verify.yml@refs/heads/main
+  oidc_allowed_refs:
+    - refs/heads/main
+    - refs/heads/main
+  oidc_allowed_environments:
+    - production-collector
+    - production-verifier
+vercel:
+  api_root: apps/api
+  web_root: apps/web
+  include_source_files_outside_root: enabled
+  expose_system_environment_variables: enabled
+  git_auto_deployments: disabled
+  cli_cwd: repository_root
+  ci_project_selection: matrix_vercel_project_id
+  build_output: .vercel/output
+  api_environment_keys:
+    - DATABASE_URL
+    - API_BASE_URL
+    - WEB_PUBLIC_ORIGIN
+    - MONITOR_SCOPE_VERSION
+    - SERVICE_TOKEN_KEY_ID
+    - SERVICE_TOKEN_ISSUER_PRIVATE_KEY
+    - SERVICE_TOKEN_ISSUER_PUBLIC_KEY
+    - BFF_CLIENT_CREDENTIAL
+    - BFF_CREDENTIAL_VERSION
+    - WORKER_BOOTSTRAP_SECRET
+    - WORKER_CREDENTIAL_VERSION
+    - CRON_SECRET
+    - ADMIN_PASSWORD_ARGON2ID_HASH
+    - SESSION_HMAC_SECRET
+    - GITHUB_REPOSITORY
+    - GITHUB_WORKFLOW_REFS
+    - GITHUB_ALLOWED_REFS
+    - GITHUB_ALLOWED_ENVIRONMENTS
+  web_environment_keys:
+    - API_BASE_URL
+    - BFF_CLIENT_CREDENTIAL
+    - BFF_CREDENTIAL_VERSION
+    - WEB_PUBLIC_ORIGIN
+supabase:
+  projects:
+    - preview
+    - production
+  runtime_connection: transaction_pooler
+  migration_connection: direct_async_sqlalchemy
+  backup_connection: direct_native_libpq
+health:
+  healthy:
+    http_status: 200
+    body:
+      status: ok
+      version: 0.1.0
+      db: ok
+  degraded:
+    http_status: 200
+    body:
+      status: degraded
+      version: 0.1.0
+      db: unavailable
+  protected_unconfigured_status: 503
+acceptance:
+  consecutive_utc_days: 30
+  collection_slots: 240
+  verifier_slots: 2880
+  allowed_missing_verifier_slots: 0
