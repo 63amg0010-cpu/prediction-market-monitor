@@ -1,5 +1,3 @@
-# ruff: noqa: INP001
-
 from datetime import UTC, datetime
 from uuid import UUID
 

@@ -1,5 +1,3 @@
-# ruff: noqa: INP001
-
 import gzip
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
