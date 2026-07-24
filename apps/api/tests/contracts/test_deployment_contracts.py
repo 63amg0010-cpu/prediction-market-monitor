@@ -244,22 +244,32 @@ def test_cloud_handoff_is_linked_from_every_operator_entrypoint() -> None:
 
 
 def test_phase5_done_claims_reference_current_green_hashed_evidence() -> None:
-    # Given: Phase 5 completion claims and the final evidence hash manifest.
-    summary = _read(".omo/evidence/phase5-deployment/summary.md")
-    done_claim = summary.split("## Implemented", 1)[0]
+    # Given: public completion claims and their current source/evidence manifest.
+    evidence_root = "docs/evidence/deployment-validation"
+    summary = _read(f"{evidence_root}/summary.md")
+    done_claim = summary.split("## Scope", 1)[0]
     paths = tuple(
         match.group(1)
         for match in re.finditer(
-            r"`(\.omo/evidence/phase5-deployment/[^`]+)`", done_claim
+            rf"`({evidence_root}/[^`]+)`", done_claim
         )
     )
-    hashes = set(
-        _read(".omo/evidence/phase5-deployment/evidence-hashes.log").splitlines()
+    current_sources = (
+        ".env.example",
+        ".github/workflows/ci.yml",
+        ".github/workflows/collect.yml",
+        ".github/workflows/migrate.yml",
+        ".github/workflows/verify.yml",
+        "apps/api/vercel.json",
+        "apps/web/vercel.json",
+        "docs/cloud-deployment-handoff.md",
+        "docs/cloud-deployment-handoff.yml",
     )
+    hashes = set(_read(f"{evidence_root}/evidence-hashes.txt").splitlines())
 
-    # When/Then: DoneClaim cites no red artifact and every current digest is recorded.
+    # When/Then: claims cite no red artifact and all current digests are recorded.
     assert paths
-    for relative in paths:
+    for relative in (*paths, *current_sources):
         path = ROOT / relative
         assert "red" not in path.name.lower(), relative
         assert path.exists(), relative
