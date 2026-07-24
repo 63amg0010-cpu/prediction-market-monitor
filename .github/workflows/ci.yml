@@ -30,7 +30,7 @@ jobs:
           enable-cache: true
 
       - name: Enable pinned pnpm
-        run: corepack prepare pnpm@9.15.4 --activate
+        run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
       - name: Install Python dependencies
         run: uv sync --frozen --all-packages
@@ -87,7 +87,7 @@ jobs:
           node-version: 22.14.0
 
       - name: Enable pinned pnpm
-        run: corepack prepare pnpm@9.15.4 --activate
+        run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
       - name: Install pinned Vercel CLI
         run: npm install --global vercel@51.7.0
@@ -135,7 +135,7 @@ jobs:
           node-version: 22.14.0
 
       - name: Enable pinned pnpm
-        run: corepack prepare pnpm@9.15.4 --activate
+        run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
       - name: Install pinned Vercel CLI
         run: npm install --global vercel@51.7.0
