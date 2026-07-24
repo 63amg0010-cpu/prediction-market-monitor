@@ -4,7 +4,7 @@
 
 ## 현재 구현 및 운영 상태
 
-로컬 코드와 계약 테스트는 Phase 0–4 범위까지 구현되었고, Phase 5의 설정·운영 문서·자동 테스트·정적/시각 검증이 완료되었습니다. 이 완료 표시는 로컬 및 계약 수준의 결과이며, 실제 수집 글·분석 결과·대시보드 지표나 Production 승인을 의미하지 않습니다. 자세한 검증 결과는 [Phase 5 evidence summary](.omo/evidence/phase5/summary.md)를 참고하세요.
+로컬 코드와 계약 테스트는 Phase 0–4 범위까지 구현되었고, Phase 5의 설정·운영 문서·자동 테스트·정적/시각 검증이 완료되었습니다. 이 완료 표시는 로컬 및 계약 수준의 결과이며, 실제 수집 글·분석 결과·대시보드 지표나 Production 승인을 의미하지 않습니다. 자세한 검증 결과는 [Phase 5 evidence summary](docs/evidence/deployment-validation/summary.md)를 참고하세요.
 
 - 수집원 어댑터는 공식 승인·약관·한도 증거가 없으면 `enabled: false`와 fail-closed 상태를 유지합니다.
 - Windows Codex 분석 작업자는 capability proof가 실패한 현재 `blocked_capability` 상태이며, 승인된 sandbox 증명 없이는 실행하지 않습니다.

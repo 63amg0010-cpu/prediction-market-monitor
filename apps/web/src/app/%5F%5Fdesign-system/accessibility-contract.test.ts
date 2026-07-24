@@ -50,7 +50,7 @@ describe("design-system accessibility and adaptive contracts", () => {
 
   it("records non-overflowing real-browser captures at each supported viewport", () => {
     const raw = readFileSync(
-      resolve(process.cwd(), "../../.omo/evidence/phase4-web-final/design-system-runtime.json"),
+      resolve(process.cwd(), "../../docs/evidence/design-system-runtime.json"),
       "utf8",
     )
     const runtimeEvidence = RuntimeEvidenceSchema.parse(JSON.parse(raw))
