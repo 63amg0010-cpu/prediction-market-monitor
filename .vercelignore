@@ -1,0 +1,45 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+
+# Python caches, environments, and generated output
+.venv/
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.basedpyright/
+htmlcov/
+coverage.xml
+*.egg-info/
+dist/
+build/
+
+# Node and Next.js caches/dependencies
+node_modules/
+.pnpm-store/
+.next/
+out/
+*.tsbuildinfo
+
+# Local tools and session state
+.agents/
+.codex/
+.codegraph/
+.vercel/
+.gjc/
+.omo/
+.debug-journal.md
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Test and editor output
+coverage/
+*.log
+.vscode/
+.idea/
