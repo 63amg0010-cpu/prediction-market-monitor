@@ -96,6 +96,7 @@ describe("truthful dashboard states", () => {
 
     render(<DashboardLoader activeView="overview" filters={filters} />)
     await waitFor(() => expect(kyGet).toHaveBeenCalledTimes(1))
+    expect(kyGet.mock.calls[0]?.[1]).toMatchObject({ timeout: 30_000 })
     const retry = await screen.findByRole("button", { name: "다시 시도" })
     fireEvent.click(retry)
 

@@ -46,6 +46,7 @@ describe("LoginForm progressive security contract", () => {
       json: { password: "wrong-password" },
       retry: 0,
       throwHttpErrors: false,
+      timeout: 30_000,
     })
     expect(postMock.mock.calls[0]?.[1]).not.toHaveProperty("headers.x-csrf-token")
 

@@ -29,6 +29,7 @@ export function LoginForm() {
       const response = await ky.post("/api/auth/login", {
         retry: 0,
         throwHttpErrors: false,
+        timeout: 30_000,
         json: { password },
       })
       const raw: unknown = await response.json().catch(() => null)

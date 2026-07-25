@@ -28,6 +28,7 @@ export function DashboardLoader({ activeView, filters }: DashboardLoaderProps) {
         const response = await ky.get(`/api/dashboard?${query}`, {
           retry: 0,
           throwHttpErrors: false,
+          timeout: 30_000,
           signal: abortController.signal,
           headers: {
             "cache-control": "no-store",
