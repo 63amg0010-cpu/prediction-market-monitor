@@ -42,10 +42,6 @@ class SqlPrincipalAuthorizationRepository:
         self, request: PrincipalAuthorizationRequest
     ) -> PrincipalAuthorizationDecision:
         """Return one atomic revocation and credential-version decision."""
-        try:
-            version = int(request.credential_version)
-        except ValueError:
-            return PrincipalAuthorizationDecision(authorized=False)
         async with self._sessions.open() as session, session.begin():
             statement = (
                 select(ServicePrincipal.id)
@@ -57,7 +53,7 @@ class SqlPrincipalAuthorizationRepository:
                     ServicePrincipal.subject == request.principal_id,
                     ServicePrincipal.active.is_(True),
                     ServicePrincipal.revoked_at.is_(None),
-                    PrincipalCredentialVersion.version == version,
+                    PrincipalCredentialVersion.version == request.credential_version,
                     PrincipalCredentialVersion.active.is_(True),
                     PrincipalCredentialVersion.revoked_at.is_(None),
                     PrincipalCredentialVersion.valid_from <= request.checked_at,
@@ -71,7 +67,6 @@ class SqlPrincipalAuthorizationRepository:
     async def register(self, request: GitHubPrincipalRegistration) -> bool:
         """Persist one reviewed workflow-run principal without reviving revocation."""
         try:
-            version = int(request.credential_version)
             kind = DomainPrincipalKind(request.kind.value)
         except ValueError:
             return False
@@ -103,7 +98,8 @@ class SqlPrincipalAuthorizationRepository:
                     select(PrincipalCredentialVersion)
                     .where(
                         PrincipalCredentialVersion.principal_id == principal.id,
-                        PrincipalCredentialVersion.version == version,
+                        PrincipalCredentialVersion.version
+                        == request.credential_version,
                     )
                     .with_for_update()
                 )
@@ -116,7 +112,7 @@ class SqlPrincipalAuthorizationRepository:
                     PrincipalCredentialVersion(
                         id=uuid4(),
                         principal_id=principal.id,
-                        version=version,
+                        version=request.credential_version,
                         verifier_hash=verifier_hash,
                         active=True,
                         valid_from=request.valid_from,
@@ -144,7 +140,6 @@ class SqlWorkerApprovalRepository:
         """Validate the exact active worker, version, and capability proof."""
         try:
             proof_id = UUID(request.capability_proof_id)
-            version = int(request.credential_version)
         except ValueError:
             return False
         async with self._sessions.open() as session, session.begin():
@@ -169,7 +164,7 @@ class SqlWorkerApprovalRepository:
                     ServicePrincipal.subject == f"worker:{request.worker_id}",
                     ServicePrincipal.active.is_(True),
                     ServicePrincipal.revoked_at.is_(None),
-                    PrincipalCredentialVersion.version == version,
+                    PrincipalCredentialVersion.version == request.credential_version,
                     PrincipalCredentialVersion.active.is_(True),
                     PrincipalCredentialVersion.valid_from <= request.checked_at,
                     PrincipalCredentialVersion.valid_until > request.checked_at,

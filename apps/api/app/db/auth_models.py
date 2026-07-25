@@ -158,7 +158,10 @@ class PrincipalCredentialVersion(Base):
     __tablename__: str = "principal_credential_versions"
     __table_args__: tuple[SchemaItem, ...] = (
         UniqueConstraint("principal_id", "version", name="uq_principal_version"),
-        CheckConstraint("version > 0", name="positive_version"),
+        CheckConstraint(
+            "char_length(version) BETWEEN 1 AND 128",
+            name="credential_version_nonblank",
+        ),
         CheckConstraint(
             "octet_length(verifier_hash) = 32", name="verifier_hash_sha256"
         ),
@@ -171,7 +174,7 @@ class PrincipalCredentialVersion(Base):
         ForeignKey("service_principals.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[str] = mapped_column(String(128), nullable=False)
     verifier_hash: Mapped[bytes] = mapped_column(LargeBinary(32), nullable=False)
     active: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")

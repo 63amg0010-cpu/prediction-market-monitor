@@ -6,6 +6,7 @@ from app.db import Base, models
 from sqlalchemy import (
     DateTime,
     LargeBinary,
+    String,
     UniqueConstraint,
     insert,
 )
@@ -164,6 +165,20 @@ def test_source_enablement_and_finance_exclusivity_fail_closed() -> None:
     assert "uq_community_sources_one_kr_finance_alternative" in index_ddl
     assert "toss_securities" in index_ddl
     assert "naver_finance" in index_ddl
+
+
+def test_principal_credential_versions_preserve_symbolic_version() -> None:
+    # Given
+    table = Base.metadata.tables["principal_credential_versions"]
+
+    # When
+    version_type = table.c.version.type
+    table_ddl = str(CreateTable(table).compile(dialect=postgresql.dialect()))
+
+    # Then
+    assert isinstance(version_type, String)
+    assert version_type.length == 128
+    assert "credential_version_nonblank" in table_ddl
 
 
 def test_collection_run_terminal_marker_is_all_or_nothing() -> None:

@@ -7,7 +7,7 @@ from alembic.script import ScriptDirectory
 
 API_ROOT = Path(__file__).parents[2]
 ALEMBIC_INI = API_ROOT / "alembic.ini"
-EXPECTED_HEAD = "20260724_0006"
+EXPECTED_HEAD = "20260725_0007"
 
 
 def _alembic_config() -> tuple[Config, StringIO]:
@@ -31,6 +31,7 @@ def test_phase_two_contract_migration_is_the_only_current_head() -> None:
     # Then: every Phase 2 correction remains on one ordered migration chain.
     assert script.get_heads() == [EXPECTED_HEAD]
     assert tuple(item.revision for item in revisions) == (
+        "20260725_0007",
         "20260724_0006",
         "20260723_0005",
         "20260722_0004",
@@ -39,6 +40,7 @@ def test_phase_two_contract_migration_is_the_only_current_head() -> None:
         "20260721_0001",
     )
     assert tuple(item.down_revision for item in revisions) == (
+        "20260724_0006",
         "20260723_0005",
         "20260722_0004",
         "20260722_0003",
@@ -63,6 +65,7 @@ def test_upgrade_head_generates_postgresql_schema_and_security_triggers() -> Non
     assert "terminal_page_commit_id UUID" in ddl
     assert "compressed_payload BYTEA NOT NULL" in ddl
     assert "report_payload BYTEA NOT NULL" in ddl
+    assert "ALTER COLUMN version TYPE VARCHAR(128)" in ddl
     assert (
         "DROP CONSTRAINT IF EXISTS report_input_tombstones_first_manifest_id_fkey"
     ) in ddl

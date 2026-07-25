@@ -10,7 +10,9 @@ from app.core.errors import IdentityError
 from app.core.jwt import Ed25519TokenIssuer, Ed25519TokenVerifier
 from app.core.principals import CredentialVersion, PrincipalId, PrincipalKind, Scope
 from app.services.dashboard.sql_authorizer import SqlScopeAuthorizer
+from app.services.identity.bff import BffAuthorization
 from app.services.identity.exchanges import (
+    BffExchangeCommand,
     GitHubExchangeCommand,
     IdentityExchangeDependencies,
     IdentityExchangePolicy,
@@ -90,6 +92,18 @@ class _UnusedBff:
     async def authorize(self, request: BffExchangeRequest, now: datetime) -> Never:
         del request, now
         raise AssertionError
+
+
+class _Bff:
+    async def authorize(
+        self, request: BffExchangeRequest, now: datetime
+    ) -> BffAuthorization:
+        del now
+        return BffAuthorization(
+            principal_id=PrincipalId(f"bff:{request.deployment_identity}"),
+            credential_version=request.credential_version,
+            scopes=request.requested_scopes,
+        )
 
 
 class _UnusedWorker:
@@ -226,3 +240,62 @@ async def test_unreviewed_github_repository_cannot_register_principal() -> None:
     with pytest.raises(IdentityError):
         _ = await service.exchange_github(GitHubExchangeCommand(SecretStr("oidc")))
     assert registry.registrations == []
+
+
+@pytest.mark.asyncio
+async def test_first_bff_exchange_registers_authorizable_deployment() -> None:
+    # Given
+    now = datetime.now(UTC).replace(microsecond=0)
+    registry = _PrincipalRegistry()
+    private_key = Ed25519PrivateKey.generate()
+    verifier = Ed25519TokenVerifier(
+        issuer="monitor-api", public_keys={"key-1": private_key.public_key()}
+    )
+    service = IdentityExchangeService(
+        IdentityExchangeDependencies(
+            clock=_Clock(now),
+            issuer=Ed25519TokenIssuer(
+                issuer="monitor-api", active_key_id="key-1", private_key=private_key
+            ),
+            bff=_Bff(),
+            github_verifier=_OidcVerifier(_claims(now)),
+            github=GitHubExchangeAuthorizer(
+                GitHubClaimPolicy(
+                    "owner/monitor",
+                    (
+                        GitHubWorkflowRule(
+                            _claims(now).job_workflow_ref,
+                            "refs/heads/main",
+                            "production",
+                            frozenset({Scope.COLLECTOR_MATERIALIZE}),
+                        ),
+                    ),
+                ),
+                _Nonces(),
+            ),
+            github_principals=registry,
+            worker=_UnusedWorker(),
+        ),
+        IdentityExchangePolicy("https://api.test", CredentialVersion("1")),
+    )
+
+    # When
+    exchanged = await service.exchange_bff(
+        BffExchangeCommand(
+            credential_version=CredentialVersion("bff-v1"),
+            presented_credential=SecretStr("server-only-credential"),
+            request_nonce="nonce-1",
+            requested_scopes=frozenset({Scope.BFF_AUTH, Scope.BFF_READ}),
+            deployment_identity="deployment-123",
+        )
+    )
+    authorized = await SqlScopeAuthorizer(
+        verifier, registry, "https://api.test"
+    ).authorize(SecretStr(exchanged.access_token), Scope.BFF_AUTH)
+
+    # Then
+    assert authorized.principal_id == PrincipalId("bff:deployment-123")
+    assert len(registry.registrations) == 1
+    assert registry.registrations[0].kind is PrincipalKind.BFF
+    assert registry.registrations[0].credential_version == CredentialVersion("bff-v1")
+    assert registry.registrations[0].valid_until == exchanged.expires_at

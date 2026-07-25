@@ -185,6 +185,22 @@ class IdentityExchangeService:
             ),
             now,
         )
+        expires_at = now + timedelta(seconds=BFF_TOKEN_TTL_SECONDS)
+        registered = await self._dependencies.github_principals.register(
+            GitHubPrincipalRegistration(
+                principal_id=authorization.principal_id,
+                kind=PrincipalKind.BFF,
+                credential_version=authorization.credential_version,
+                workflow_ref=f"bff-deployment:{command.deployment_identity}",
+                valid_from=now,
+                valid_until=expires_at,
+            )
+        )
+        if not registered:
+            raise IdentityError(
+                IdentityErrorCode.INVALID_CREDENTIAL,
+                "BFF deployment principal is revoked",
+            )
         principal = Principal(
             id=authorization.principal_id,
             kind=PrincipalKind.BFF,
