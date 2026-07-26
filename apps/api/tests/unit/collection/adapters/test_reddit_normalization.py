@@ -8,6 +8,7 @@ import httpx2
 import pytest
 from app.collection.adapters.models import NormalizedPost, RejectedOversize
 from app.collection.adapters.reddit import RedditAdapter, RedditFetchRequest
+from app.collection.normalizer import compute_content_hash
 
 from .factories import reddit_authorization, reddit_context, reddit_credentials
 
@@ -49,6 +50,7 @@ async def test_normalization_retains_full_original_and_strips_author_and_raw(
     )
     assert first.comments_count == 12
     assert first.upvote_or_score == 34
+    assert first.content_hash == compute_content_hash(first.title, first.body)
     assert isinstance(second, NormalizedPost)
     assert second.comments_count is None
     assert second.upvote_or_score is None

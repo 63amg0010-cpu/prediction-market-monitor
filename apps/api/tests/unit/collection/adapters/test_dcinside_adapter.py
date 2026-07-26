@@ -24,6 +24,7 @@ from app.collection.adapters.models import (
     SourceBlockedError,
 )
 from app.collection.collector_sources import source_executions
+from app.collection.normalizer import compute_content_hash
 from app.domain.enums import AuthorizationStatus, SourcePlatform
 
 NOW = datetime(2026, 7, 26, 3, 0, tzinfo=UTC)
@@ -196,6 +197,7 @@ async def test_dcinside_fetches_only_reviewed_gallery_without_author_identity() 
     assert post.published_at == datetime(2026, 6, 10, 2, 29, 45, tzinfo=UTC)
     assert post.comments_count == 2
     assert post.upvote_or_score == 4
+    assert post.content_hash == compute_content_hash(post.title, post.body)
     assert post.canonical_url == (
         "https://gall.dcinside.com/mini/board/view/"
         "?id=predictionmarket&no=31"

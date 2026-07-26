@@ -4,9 +4,9 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import TYPE_CHECKING, assert_never
 
+from app.collection.normalizer import compute_body_bytes, compute_content_hash
 from app.domain.enums import AuthorizationStatus, SourcePlatform
 
 from .dcinside_contracts import (
@@ -146,13 +146,8 @@ def _normalize(document: DCInsidePostDocument) -> NormalizedItem:
         "https://gall.dcinside.com/mini/board/view/"
         f"?id=predictionmarket&no={document.source_post_id}"
     )
-    content_bytes = (
-        document.title.encode("utf-8")
-        + b"\0"
-        + document.body.encode("utf-8")
-    )
-    content_hash = hashlib.sha256(content_bytes).hexdigest()
-    size_bytes = len(content_bytes)
+    content_hash = compute_content_hash(document.title, document.body)
+    size_bytes = compute_body_bytes(document.body)
     if size_bytes > MAX_CONTENT_BYTES:
         return RejectedOversize(
             source=SourcePlatform.DCINSIDE,

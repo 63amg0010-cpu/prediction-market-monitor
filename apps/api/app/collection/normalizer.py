@@ -101,6 +101,11 @@ def compute_content_hash(title: str, body: str) -> str:
     return sha256(canonical_bytes(identity)).hexdigest()
 
 
+def compute_body_bytes(body: str) -> int:
+    """Return the persisted canonical UTF-8 body size."""
+    return len(_normalize_text(body).encode("utf-8"))
+
+
 def normalize_page_items(
     items: tuple[PagePostInput, ...],
 ) -> tuple[NormalizedPageItem, ...]:
@@ -126,7 +131,7 @@ def normalize_page_items(
                 content_hash = compute_content_hash(title, body)
                 if content_hash != item.content_hash:
                     raise CollectionError(CollectionErrorCode.INVALID_CONTRACT, 422)
-                body_bytes = len(body.encode("utf-8"))
+                body_bytes = compute_body_bytes(body)
                 if body_bytes > MAX_POST_BYTES:
                     normalized.append(
                         OversizeRejection(

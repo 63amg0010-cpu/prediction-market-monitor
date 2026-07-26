@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from app.collection.normalizer import compute_body_bytes, compute_content_hash
 from app.domain.enums import SourcePlatform
 
 from .http_errors import HttpFailureKind
@@ -35,9 +35,8 @@ def normalize_reddit_post(raw: RedditPostPayload) -> NormalizedItem:
             "canonical_url_invalid",
         )
     canonical_url = f"https://www.reddit.com{raw.permalink}"
-    content_bytes = raw.title.encode("utf-8") + b"\0" + raw.selftext.encode("utf-8")
-    content_hash = hashlib.sha256(content_bytes).hexdigest()
-    size_bytes = len(content_bytes)
+    content_hash = compute_content_hash(raw.title, raw.selftext)
+    size_bytes = compute_body_bytes(raw.selftext)
     if size_bytes > MAX_CONTENT_BYTES:
         return RejectedOversize(
             source=SourcePlatform.REDDIT,
