@@ -148,6 +148,7 @@ async def _persist_normalized_item(
                     updated_at=context.observed_at,
                 )
                 session.add(post)
+                await session.flush()
             reason = (
                 PostVersionReason.FIRST_SEEN
                 if plan.revision == 1
@@ -166,6 +167,7 @@ async def _persist_normalized_item(
                     collected_at=context.observed_at,
                 )
             )
+            await session.flush()
             post.current_version_id = version_id
             post.canonical_url = item.canonical_url
             post.updated_at = context.observed_at
