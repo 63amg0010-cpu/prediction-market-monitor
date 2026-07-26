@@ -158,7 +158,7 @@ def test_migration_workflow_is_manual_confirmed_and_environment_protected() -> N
     assert '"$PG_RESTORE_DATABASE_URL"' in restore_command
 
 
-def test_ci_workflow_builds_tests_and_deploys_prebuilt_vercel_artifacts() -> None:
+def test_ci_workflow_builds_tests_and_deploys_vercel_artifacts() -> None:
     # Given: the deployment CI workflow for Vercel preview and production.
     workflow = _workflow("ci.yml")
     triggers = _mapping(workflow["on"])
@@ -167,7 +167,8 @@ def test_ci_workflow_builds_tests_and_deploys_prebuilt_vercel_artifacts() -> Non
     preview_job = _job(workflow, "deploy-preview")
     production_job = _job(workflow, "deploy-production")
 
-    # When/Then: it uses pinned tooling, test gates, and prebuilt Vercel deploys.
+    # When/Then: it uses pinned tooling, test gates, source deploys for the
+    # Python API, and prebuilt deploys for the web app.
     assert set(triggers) == {"push", "pull_request", "workflow_dispatch"}
     assert permissions == {"contents": "read"}
     assert ci_job["timeout-minutes"] == 15
@@ -181,6 +182,7 @@ def test_ci_workflow_builds_tests_and_deploys_prebuilt_vercel_artifacts() -> Non
     assert "vercel pull --yes" in rendered
     assert "vercel build" in rendered
     assert "pnpm --filter @prediction-market/web test" in rendered
+    assert "vercel deploy --prod --yes" in rendered
     assert "vercel deploy --prebuilt" in rendered
     assert "--prod" in rendered
     assert "VERCEL_TOKEN" in rendered
@@ -192,8 +194,9 @@ def test_vercel_monorepo_deploys_from_repository_root_by_matrix_project() -> Non
     # Given: isolated preview and production matrix jobs for both Vercel projects.
     workflow = _workflow("ci.yml")
 
-    # When/Then: project IDs select the target while every Vercel command and
-    # its Build Output API assertion execute at the repository root.
+    # When/Then: project IDs select the target while every Vercel command
+    # executes at the repository root. The Python API is built remotely from
+    # source; only the web app uses the local Build Output API artifact.
     expected_projects = {
         ("api", "VERCEL_API_PROJECT_ID"),
         ("web", "VERCEL_WEB_PROJECT_ID"),
@@ -220,13 +223,33 @@ def test_vercel_monorepo_deploys_from_repository_root_by_matrix_project() -> Non
             if "vercel " in str(step.get("run", ""))
             or ".vercel/output" in str(step.get("run", ""))
         )
-        assert len(vercel_steps) == 4
+        assert len(vercel_steps) == 5
         for step in vercel_steps:
             assert "working-directory" not in step
         output_step = next(
             step for step in vercel_steps if ".vercel/output" in str(step["run"])
         )
         assert output_step["run"] == "test -d .vercel/output"
+        assert output_step["if"] == "${{ matrix.app == 'web' }}"
+        build_step = next(
+            step
+            for step in vercel_steps
+            if str(step["run"]).startswith("vercel build")
+        )
+        assert build_step["if"] == "${{ matrix.app == 'web' }}"
+        source_deploy_step = next(
+            step
+            for step in vercel_steps
+            if str(step["run"]).startswith("vercel deploy")
+            and "--prebuilt" not in str(step["run"])
+        )
+        assert source_deploy_step["if"] == "${{ matrix.app == 'api' }}"
+        prebuilt_deploy_step = next(
+            step
+            for step in vercel_steps
+            if str(step["run"]).startswith("vercel deploy --prebuilt")
+        )
+        assert prebuilt_deploy_step["if"] == "${{ matrix.app == 'web' }}"
         for step in vercel_steps:
             if "vercel " not in str(step["run"]):
                 continue

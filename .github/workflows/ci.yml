@@ -86,12 +86,6 @@ jobs:
         with:
           node-version: 22.14.0
 
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
-        if: ${{ matrix.app == 'api' }}
-        with:
-          version: "0.5.30"
-          enable-cache: true
-
       - name: Enable pinned pnpm
         run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
@@ -105,15 +99,25 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
 
       - name: Build Vercel preview artifact
+        if: ${{ matrix.app == 'web' }}
         run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
 
       - name: Test after Vercel build
+        if: ${{ matrix.app == 'web' }}
         run: test -d .vercel/output
 
+      - name: Deploy Vercel API preview from source
+        if: ${{ matrix.app == 'api' }}
+        run: vercel deploy --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+
       - name: Deploy Vercel preview prebuilt artifact
+        if: ${{ matrix.app == 'web' }}
         run: vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -140,12 +144,6 @@ jobs:
         with:
           node-version: 22.14.0
 
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
-        if: ${{ matrix.app == 'api' }}
-        with:
-          version: "0.5.30"
-          enable-cache: true
-
       - name: Enable pinned pnpm
         run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
@@ -159,15 +157,25 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
 
       - name: Build Vercel production artifact
+        if: ${{ matrix.app == 'web' }}
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
 
       - name: Test after Vercel build
+        if: ${{ matrix.app == 'web' }}
         run: test -d .vercel/output
 
+      - name: Deploy Vercel API production from source
+        if: ${{ matrix.app == 'api' }}
+        run: vercel deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
+
       - name: Deploy Vercel production prebuilt artifact
+        if: ${{ matrix.app == 'web' }}
         run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}

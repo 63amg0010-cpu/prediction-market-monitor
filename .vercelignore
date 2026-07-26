@@ -4,7 +4,7 @@
 !.env.example
 
 # Python caches, environments, and generated output
-/.venv/
+.venv/
 __pycache__/
 *.py[cod]
 *.pyd
@@ -28,6 +28,7 @@ out/
 .agents/
 .codex/
 .codegraph/
+.vercel/
 .gjc/
 .omo/
 .debug-journal.md
