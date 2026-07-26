@@ -84,6 +84,7 @@ async def materialize_slots(
                 materialized_at=draft.materialized_at,
             )
         )
+        await session.flush()
         session.add(
             CollectionCommand(
                 id=command_id,
