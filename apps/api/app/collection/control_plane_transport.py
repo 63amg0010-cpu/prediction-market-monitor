@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from app.domain.types import JsonValue
 
 CONTROL_PLANE_UNAVAILABLE = "control_plane_unavailable"
+CONTROL_PLANE_READ_TIMEOUT_SECONDS = 60.0
 HTTP_SERVER_ERROR = 500
 
 
@@ -48,7 +49,7 @@ class ControlPlaneTransport:
             base_url=base_url,
             timeout=httpx2.Timeout(
                 connect=5.0,
-                read=30.0,
+                read=CONTROL_PLANE_READ_TIMEOUT_SECONDS,
                 write=10.0,
                 pool=10.0,
             ),
@@ -150,4 +151,4 @@ def _redacted_unavailable_code(response: httpx2.Response) -> str:
     return f"{CONTROL_PLANE_UNAVAILABLE}:{status}:{code}"
 
 
-__all__ = ("ControlPlaneTransport",)
+__all__ = ("CONTROL_PLANE_READ_TIMEOUT_SECONDS", "ControlPlaneTransport")

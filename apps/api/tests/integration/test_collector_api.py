@@ -7,6 +7,7 @@ import pytest
 from app.collection.base import CollectionError, CollectionErrorCode
 from app.collection.cli import ControlPlaneClient
 from app.collection.cli_config import CliError
+from app.collection.control_plane_transport import CONTROL_PLANE_READ_TIMEOUT_SECONDS
 from app.collection.page_commit import PageCommitRequest
 from app.collection.repository import claim_authorization_statement
 from app.core.principals import Scope
@@ -223,3 +224,7 @@ def test_claim_locks_exact_authorization_rows_in_postgresql() -> None:
     # Then: both source and decision rows are locked before claim mutation.
     assert "FOR UPDATE OF community_sources, source_authorization_decisions" in sql
     assert "community_sources.scope_version" in sql
+
+
+def test_control_plane_allows_one_serverless_page_commit_window() -> None:
+    assert CONTROL_PLANE_READ_TIMEOUT_SECONDS == 60.0
