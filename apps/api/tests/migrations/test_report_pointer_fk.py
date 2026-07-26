@@ -9,7 +9,7 @@ from sqlalchemy import ForeignKeyConstraint
 
 API_ROOT = Path(__file__).parents[2]
 ALEMBIC_INI = API_ROOT / "alembic.ini"
-EXPECTED_HEAD = "20260725_0007"
+EXPECTED_HEAD = "20260726_0008"
 
 
 def _alembic_config() -> tuple[Config, StringIO]:
