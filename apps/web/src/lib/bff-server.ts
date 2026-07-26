@@ -12,13 +12,13 @@ import {
   type ExchangedToken,
 } from "./bff-token"
 import { readServerEnvironment } from "./server-env"
-import { runNetworkRequest } from "./server-http"
+import { runNetworkRequest, UPSTREAM_REQUEST_TIMEOUT_MS } from "./server-http"
 
 async function exchangeToken(scopes: BffScopeSet): Promise<ExchangedToken> {
   const environment = readServerEnvironment()
   const response = await runNetworkRequest(() =>
     ky.post(new URL("/v1/service-tokens/bff/exchange", environment.apiBaseUrl), {
-      timeout: 10_000,
+      timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
       retry: 0,
       throwHttpErrors: false,
       headers: {

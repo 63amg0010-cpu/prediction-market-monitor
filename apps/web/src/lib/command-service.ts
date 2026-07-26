@@ -5,7 +5,7 @@ import ky from "ky"
 import { BoundaryError, upstreamError } from "./api-error"
 import { getBffAdminToken } from "./bff-server"
 import { type CollectionRetryResponse, CollectionRetryResponseSchema } from "./command-contract"
-import { apiUrl, runNetworkRequest } from "./server-http"
+import { apiUrl, runNetworkRequest, UPSTREAM_REQUEST_TIMEOUT_MS } from "./server-http"
 
 type CollectionRetryInput = {
   readonly requestId: string
@@ -30,7 +30,7 @@ export async function retryCollection(
   if (input.referer !== null) headers.referer = input.referer
   const response = await runNetworkRequest(() =>
     ky.post(apiUrl("/v1/commands/collection-retry"), {
-      timeout: 10_000,
+      timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
       retry: 0,
       throwHttpErrors: false,
       headers,

@@ -3,6 +3,8 @@ import "server-only"
 import { BoundaryError } from "./api-error"
 import { readServerEnvironment } from "./server-env"
 
+export const UPSTREAM_REQUEST_TIMEOUT_MS = 30_000
+
 export function apiUrl(path: string): URL {
   return new URL(path, readServerEnvironment().apiBaseUrl)
 }
