@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING, Self
 
 import anyio
 import httpx2
+from pydantic import ValidationError
+
+from app.core.errors import ErrorEnvelope
 
 from .cli_config import CliError, json_bytes
 
@@ -133,9 +136,18 @@ class ControlPlaneTransport:
                 _ = response.raise_for_status()
                 return response
             if attempt:
-                raise CliError(CONTROL_PLANE_UNAVAILABLE)
+                raise CliError(_redacted_unavailable_code(response))
             await anyio.sleep(1)
         raise CliError(CONTROL_PLANE_UNAVAILABLE)
+
+
+def _redacted_unavailable_code(response: httpx2.Response) -> str:
+    status = f"http_{response.status_code}"
+    try:
+        code = ErrorEnvelope.model_validate_json(response.content).error.code.value
+    except ValidationError:
+        return f"{CONTROL_PLANE_UNAVAILABLE}:{status}"
+    return f"{CONTROL_PLANE_UNAVAILABLE}:{status}:{code}"
 
 
 __all__ = ("ControlPlaneTransport",)

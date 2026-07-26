@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import httpx2
 import pytest
 from app.collection.base import CollectionError, CollectionErrorCode
 from app.collection.cli import ControlPlaneClient
+from app.collection.cli_config import CliError
 from app.collection.page_commit import PageCommitRequest
 from app.collection.repository import claim_authorization_statement
 from app.core.principals import Scope
@@ -137,6 +140,42 @@ async def test_control_plane_client_translates_page_conflict_body() -> None:
     assert raised.value.current_cursor == "cursor-2"
     assert raised.value.expected_page_ordinal == 2
     assert raised.value.existing_commit_id == COMMIT_ID
+
+
+@pytest.mark.asyncio
+async def test_control_plane_client_reports_only_redacted_server_error_code() -> None:
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/oidc":
+            return httpx2.Response(200, json={"value": "github-token"})
+        if request.url.path == "/v1/service-tokens/github/exchange":
+            return httpx2.Response(200, json={"access_token": "service-token"})
+        return httpx2.Response(
+            503,
+            json={
+                "error": {
+                    "code": "service_unavailable",
+                    "message": "service unavailable",
+                    "correlation_id": "7f9b2e33-dbeb-494a-a1dd-8f3abe89e245",
+                }
+            },
+        )
+
+    environment = {
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://github.example/oidc",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+    }
+
+    async with ControlPlaneClient(
+        "https://api.example",
+        environment,
+        transport=httpx2.MockTransport(respond),
+    ) as client:
+        await client.authenticate()
+        with pytest.raises(
+            CliError,
+            match="control_plane_unavailable:http_503:service_unavailable",
+        ):
+            _ = await client.materialize("scope-v1", datetime.now(UTC))
 
 
 def test_claim_locks_exact_authorization_rows_in_postgresql() -> None:
