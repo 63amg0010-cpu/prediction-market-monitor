@@ -8,7 +8,7 @@ from app.db.models import metadata
 
 API_ROOT = Path(__file__).parents[2]
 ALEMBIC_INI = API_ROOT / "alembic.ini"
-EXPECTED_HEAD = "20260726_0008"
+EXPECTED_HEAD = "20260726_0009"
 
 
 def _alembic_config() -> tuple[Config, StringIO]:
