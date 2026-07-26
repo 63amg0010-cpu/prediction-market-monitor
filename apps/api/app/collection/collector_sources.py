@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from uuid import UUID  # noqa: TC003
 
 from pydantic import BaseModel, RootModel, SecretStr
 
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
     from contextlib import AsyncExitStack
     from datetime import datetime
-    from uuid import UUID
 
     from .adapters.blocked import EvidenceBlockedAdapter
 

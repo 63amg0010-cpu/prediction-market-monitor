@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -21,6 +23,7 @@ from app.collection.adapters.models import (
     SourceAuthorizationDecision,
     SourceBlockedError,
 )
+from app.collection.collector_sources import source_executions
 from app.domain.enums import AuthorizationStatus, SourcePlatform
 
 NOW = datetime(2026, 7, 26, 3, 0, tzinfo=UTC)
@@ -28,6 +31,7 @@ USER_AGENT = (
     "prediction-market-monitor/1.0 "
     "(personal monitoring; github.com/63amg0010-cpu/prediction-market-monitor)"
 )
+SOURCE_ID = UUID("d6dc5ea1-e3af-4bfe-88ad-e4beffd22ab6")
 
 
 def _authorization(
@@ -59,6 +63,31 @@ def _context(
     authorization: SourceAuthorizationDecision | None,
 ) -> PreflightContext:
     return PreflightContext(authorization=authorization, checked_at=NOW)
+
+
+@pytest.mark.asyncio
+async def test_dcinside_binding_json_builds_runtime_source_execution() -> None:
+    authorization = _authorization()
+    bindings = json.dumps(
+        [
+            {
+                "source_id": str(SOURCE_ID),
+                "authorization": authorization.model_dump(mode="json"),
+            }
+        ]
+    )
+    environment = {
+        "MONITOR_SOURCE_IDS": str(SOURCE_ID),
+        "MONITOR_SOURCE_BINDINGS_JSON": bindings,
+        "DCINSIDE_USER_AGENT": USER_AGENT,
+    }
+
+    async with AsyncExitStack() as stack:
+        executions = await source_executions(environment, stack, lambda: NOW)
+
+    assert len(executions) == 1
+    assert executions[0].source_id == SOURCE_ID
+    assert executions[0].platform is SourcePlatform.DCINSIDE
 
 
 @pytest.mark.asyncio
