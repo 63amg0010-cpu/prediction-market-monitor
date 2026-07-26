@@ -33,7 +33,7 @@ export function AppShell({ activeView, children, preview }: AppShellProps) {
       <header className="app-header">
         <Link className="brand" href="/">
           <span aria-hidden>PM</span>
-          <strong>반응 관제실</strong>
+          <strong>예측시장 커뮤니티분석</strong>
         </Link>
         <div className="header-meta">
           <span>개인 관리자</span>

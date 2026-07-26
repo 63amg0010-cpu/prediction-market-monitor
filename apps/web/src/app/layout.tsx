@@ -20,7 +20,7 @@ const dataFont = IBM_Plex_Mono({
 })
 
 export const metadata: Metadata = {
-  title: { default: "반응 관제실", template: "%s · 반응 관제실" },
+  title: { default: "예측시장 커뮤니티분석", template: "%s · 예측시장 커뮤니티분석" },
   description: "예측시장 커뮤니티 수집·분석·보고서 근거를 확인하는 개인 관리자 화면",
   robots: { index: false, follow: false },
 }
