@@ -86,6 +86,12 @@ jobs:
         with:
           node-version: 22.14.0
 
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        if: ${{ matrix.app == 'api' }}
+        with:
+          version: "0.5.30"
+          enable-cache: true
+
       - name: Enable pinned pnpm
         run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
@@ -133,6 +139,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22.14.0
+
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        if: ${{ matrix.app == 'api' }}
+        with:
+          version: "0.5.30"
+          enable-cache: true
 
       - name: Enable pinned pnpm
         run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
