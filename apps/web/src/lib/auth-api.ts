@@ -9,7 +9,7 @@ import {
 } from "./api-contract"
 import { BoundaryError, upstreamError } from "./api-error"
 import { getBffReadToken } from "./bff-server"
-import { apiUrl, runNetworkRequest } from "./server-http"
+import { apiUrl, runNetworkRequest, UPSTREAM_REQUEST_TIMEOUT_MS } from "./server-http"
 
 export type LoginInput = {
   readonly password: string
@@ -39,7 +39,7 @@ export async function loginAdmin(input: LoginInput): Promise<AdminSession> {
   const bffToken = await getBffReadToken()
   const response = await runNetworkRequest(() =>
     ky.post(apiUrl("/v1/auth/login"), {
-      timeout: 10_000,
+      timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
       retry: 0,
       throwHttpErrors: false,
       headers: { authorization: `Bearer ${bffToken}`, "cache-control": "no-store" },
@@ -57,7 +57,7 @@ export async function validateAdminSession(sessionToken: string): Promise<AdminS
   const bffToken = await getBffReadToken()
   const response = await runNetworkRequest(() =>
     ky.get(apiUrl("/v1/auth/session"), {
-      timeout: 10_000,
+      timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
       retry: 0,
       throwHttpErrors: false,
       headers: {
@@ -86,7 +86,7 @@ export async function logoutAdmin(input: LogoutInput): Promise<void> {
   }
   const response = await runNetworkRequest(() =>
     ky.post(apiUrl("/v1/auth/logout"), {
-      timeout: 10_000,
+      timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
       retry: 0,
       throwHttpErrors: false,
       headers,

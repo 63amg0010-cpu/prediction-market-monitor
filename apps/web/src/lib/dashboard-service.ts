@@ -13,7 +13,7 @@ import {
   ReportPageSchema,
 } from "./dashboard-contract"
 import { type DashboardFilters, filtersToSearchParams, reportSearchParams } from "./filter-contract"
-import { apiUrl, runNetworkRequest } from "./server-http"
+import { apiUrl, runNetworkRequest, UPSTREAM_REQUEST_TIMEOUT_MS } from "./server-http"
 
 type ProjectionRequest<T> = {
   readonly path: string
@@ -27,7 +27,7 @@ async function getProjection<T>(request: ProjectionRequest<T>): Promise<T> {
   url.search = request.searchParams.toString()
   const response = await runNetworkRequest(() =>
     ky.get(url, {
-      timeout: 10_000,
+      timeout: UPSTREAM_REQUEST_TIMEOUT_MS,
       retry: 0,
       throwHttpErrors: false,
       headers: {
