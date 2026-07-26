@@ -59,6 +59,7 @@ class ControlPlaneClient(ControlPlaneTransport):
         exchange = await self._request(
             "POST",
             "/v1/service-tokens/github/exchange",
+            headers={"Content-Type": "application/json"},
             content=json_bytes({"oidc_token": oidc_token}),
         )
         return ExchangeResponse.model_validate_json(exchange.content).access_token

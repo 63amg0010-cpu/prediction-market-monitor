@@ -99,6 +99,7 @@ async def test_control_plane_client_translates_page_conflict_body() -> None:
         if request.url.path == "/oidc":
             return httpx2.Response(200, json={"value": "github-token"})
         if request.url.path == "/v1/service-tokens/github/exchange":
+            assert request.headers["content-type"] == "application/json"
             return httpx2.Response(200, json={"access_token": "service-token"})
         return httpx2.Response(
             409,
