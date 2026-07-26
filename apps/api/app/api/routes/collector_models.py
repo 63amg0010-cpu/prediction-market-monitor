@@ -29,7 +29,10 @@ _INVALID_SKIP_MESSAGE = "provider status and code disagree"
 
 class _CollectorModel(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(
-        frozen=True, extra="forbid", from_attributes=True
+        frozen=True,
+        extra="forbid",
+        from_attributes=True,
+        validate_by_name=True,
     )
 
 

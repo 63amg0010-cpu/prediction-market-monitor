@@ -18,6 +18,7 @@ from tests.integration.collector_route_fixtures import (
     page_body,
 )
 from tests.integration.collector_test_constants import (
+    COMMAND_ID,
     COMMIT_ID,
     RUN_ID,
     SOURCE_ID,
@@ -176,6 +177,40 @@ async def test_control_plane_client_reports_only_redacted_server_error_code() ->
             match="control_plane_unavailable:http_503:service_unavailable",
         ):
             _ = await client.materialize("scope-v1", datetime.now(UTC))
+
+
+@pytest.mark.asyncio
+async def test_control_plane_client_accepts_serialized_command_response() -> None:
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        if request.url.path == "/oidc":
+            return httpx2.Response(200, json={"value": "github-token"})
+        if request.url.path == "/v1/service-tokens/github/exchange":
+            return httpx2.Response(200, json={"access_token": "service-token"})
+        return httpx2.Response(
+            200,
+            json={
+                "command_id": str(COMMAND_ID),
+                "status": "dispatch_reserved",
+                "attempt": 1,
+                "available_at": "2026-07-26T12:00:00Z",
+                "heartbeat_at": None,
+            },
+        )
+
+    environment = {
+        "ACTIONS_ID_TOKEN_REQUEST_URL": "https://github.example/oidc",
+        "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "request-token",
+    }
+
+    async with ControlPlaneClient(
+        "https://api.example",
+        environment,
+        transport=httpx2.MockTransport(respond),
+    ) as client:
+        await client.authenticate()
+        response = await client.reserve(COMMAND_ID, "r" * 43, "l" * 43)
+
+    assert response.command_id == COMMAND_ID
 
 
 def test_claim_locks_exact_authorization_rows_in_postgresql() -> None:
