@@ -94,4 +94,22 @@ describe("responsive filter disclosure", () => {
     )
     expect(screen.getByRole("button", { name: "필터 닫기" })).toHaveFocus()
   })
+
+  it("offers reviewed keyword examples and the 90 day evidence window", () => {
+    render(
+      <FilterBar
+        actionPath="/posts"
+        filters={{ country: "all", sourceId: "", keyword: "", period: "90d" }}
+        resultCount={20}
+        sources={[]}
+      />,
+    )
+
+    expect(screen.getByRole("textbox", { name: "키워드" })).toHaveAttribute(
+      "placeholder",
+      "예: 예측시장, 폴리마켓, 확률",
+    )
+    expect(screen.getByRole("option", { name: "90일" })).toHaveValue("90d")
+    expect(screen.getByRole("list", { name: "적용 중인 필터" })).toHaveTextContent("90일")
+  })
 })

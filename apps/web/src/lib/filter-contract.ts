@@ -5,7 +5,7 @@ const FilterSchema = z
     country: z.enum(["all", "kr", "us"]).catch("all"),
     sourceId: z.union([z.literal(""), z.string().uuid()]).catch(""),
     keyword: z.string().trim().max(300).catch(""),
-    period: z.enum(["24h", "7d", "14d", "30d"]).catch("7d"),
+    period: z.enum(["24h", "7d", "14d", "30d", "90d"]).catch("7d"),
   })
   .strict()
 
@@ -18,12 +18,15 @@ export const DEFAULT_FILTERS = {
   period: "7d",
 } as const satisfies DashboardFilters
 
-export function parseFilters(searchParams: URLSearchParams): DashboardFilters {
+export function parseFilters(
+  searchParams: URLSearchParams,
+  defaultPeriod: DashboardFilters["period"] = DEFAULT_FILTERS.period,
+): DashboardFilters {
   return FilterSchema.parse({
     country: searchParams.get("country") ?? DEFAULT_FILTERS.country,
     sourceId: searchParams.get("source_id") ?? DEFAULT_FILTERS.sourceId,
     keyword: searchParams.get("keyword") ?? DEFAULT_FILTERS.keyword,
-    period: searchParams.get("period") ?? DEFAULT_FILTERS.period,
+    period: searchParams.get("period") ?? defaultPeriod,
   })
 }
 
@@ -33,7 +36,10 @@ function first(value: string | readonly string[] | undefined): string | undefine
   return typeof value === "string" ? value : value?.at(0)
 }
 
-export function parsePageFilters(values: PageSearchParams): DashboardFilters {
+export function parsePageFilters(
+  values: PageSearchParams,
+  defaultPeriod: DashboardFilters["period"] = DEFAULT_FILTERS.period,
+): DashboardFilters {
   const searchParams = new URLSearchParams()
   for (const key of ["country", "source_id", "keyword", "period"] as const) {
     const value = first(values[key])
@@ -41,7 +47,7 @@ export function parsePageFilters(values: PageSearchParams): DashboardFilters {
       searchParams.set(key, value)
     }
   }
-  return parseFilters(searchParams)
+  return parseFilters(searchParams, defaultPeriod)
 }
 
 const PERIOD_MILLISECONDS = {
@@ -49,6 +55,7 @@ const PERIOD_MILLISECONDS = {
   "7d": 7 * 24 * 60 * 60 * 1_000,
   "14d": 14 * 24 * 60 * 60 * 1_000,
   "30d": 30 * 24 * 60 * 60 * 1_000,
+  "90d": 90 * 24 * 60 * 60 * 1_000,
 } as const
 
 export function filtersToSearchParams(

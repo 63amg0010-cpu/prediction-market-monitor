@@ -49,6 +49,15 @@ describe("dashboard filter serialization", () => {
     ).toEqual(filters)
   })
 
+  it("allows the posts route to use a longer evidence-first default period", () => {
+    const parsed = parsePageFilters({}, "90d")
+    const query = filtersToSearchParams(parsed, new Date("2026-07-26T15:00:00Z"))
+
+    expect(parsed.period).toBe("90d")
+    expect(query.get("published_from")).toBe("2026-04-27T15:00:00.000Z")
+    expect(query.get("published_to")).toBe("2026-07-26T15:00:00.000Z")
+  })
+
   it("matches the generated OpenAPI dashboard query keys", () => {
     const raw: unknown = JSON.parse(
       readFileSync(resolve(process.cwd(), "../api/openapi.json"), "utf8"),

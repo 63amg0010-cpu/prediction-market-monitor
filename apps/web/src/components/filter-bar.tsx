@@ -18,6 +18,14 @@ type FilterBarProps = {
   readonly sources: readonly FilterSource[]
 }
 
+const PERIOD_LABELS: Readonly<Record<DashboardFilters["period"], string>> = {
+  "24h": "24시간",
+  "7d": "7일",
+  "14d": "14일",
+  "30d": "30일",
+  "90d": "90일",
+}
+
 function appliedFilterLabels(
   filters: DashboardFilters,
   sources: readonly FilterSource[],
@@ -31,7 +39,7 @@ function appliedFilterLabels(
     )
   }
   if (filters.keyword.length > 0) labels.push(`“${filters.keyword}”`)
-  if (filters.period !== "7d") labels.push(filters.period === "24h" ? "24시간" : filters.period)
+  if (filters.period !== "7d") labels.push(PERIOD_LABELS[filters.period])
   return labels
 }
 
@@ -145,7 +153,7 @@ export function FilterBar({ actionPath, filters, resultCount, sources }: FilterB
               defaultValue={filters.keyword}
               maxLength={300}
               name="keyword"
-              placeholder="검색어"
+              placeholder="예: 예측시장, 폴리마켓, 확률"
             />
           </label>
           <label>
@@ -155,6 +163,7 @@ export function FilterBar({ actionPath, filters, resultCount, sources }: FilterB
               <option value="7d">7일</option>
               <option value="14d">14일</option>
               <option value="30d">30일</option>
+              <option value="90d">90일</option>
             </select>
           </label>
         </div>
