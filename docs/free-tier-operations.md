@@ -41,6 +41,7 @@ Required repository variables/secrets:
 - `MONITOR_SCOPE_VERSION`
 - `MONITOR_DEPLOYMENT_ACTIVATION_AT`
 - `MONITOR_SOURCE_IDS`
+- `DCINSIDE_USER_AGENT` while the reviewed DCInside route is enabled
 - `REDDIT_USER_AGENT` only after Reddit approval
 - `MONITOR_SOURCE_BINDINGS_JSON` only after source approval
 - `REDDIT_OAUTH_ACCESS_TOKEN` only after Reddit approval

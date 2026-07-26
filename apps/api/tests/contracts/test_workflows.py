@@ -53,6 +53,14 @@ def test_collect_workflow_uses_minute_17_oidc_bounded_cli() -> None:
     assert triggers["schedule"] == [{"cron": "17 */3 * * *"}]
     assert permissions["id-token"] == "write"
     assert job["timeout-minutes"] == 6
+    collect_step = next(
+        step
+        for value in _steps(job)
+        if isinstance(value, dict)
+        for step in (_mapping(value),)
+        if step.get("name") == "Collect through the scoped API"
+    )
+    assert collect_step["working-directory"] == "apps/api"
     rendered = yaml.safe_dump(workflow)
     assert "app.collection.cli collect" in rendered
     assert "MONITOR_DEPLOYMENT_ACTIVATION_AT" in rendered

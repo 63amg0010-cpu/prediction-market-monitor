@@ -91,6 +91,7 @@ class AuthorizationDecision(ImmutableConfigModel):
     revoked_at: datetime | None = None
     permitted_methods: tuple[str, ...] = ()
     permitted_routes: tuple[str, ...] = ()
+    permitted_fields: tuple[str, ...] = ()
     purpose: str | None = None
 
     @field_validator("effective_at", "expires_at", "revoked_at", mode="before")
@@ -105,10 +106,13 @@ class AuthorizationDecision(ImmutableConfigModel):
         """Normalize HTTP methods to sorted uppercase values."""
         return tuple(sorted({value.strip().upper() for value in values}))
 
-    @field_validator("permitted_routes", mode="before")
+    @field_validator("permitted_routes", "permitted_fields", mode="before")
     @classmethod
-    def normalize_routes(cls, values: tuple[str, ...] | list[str]) -> tuple[str, ...]:
-        """Normalize reviewed routes without inventing a route."""
+    def normalize_string_set(
+        cls,
+        values: tuple[str, ...] | list[str],
+    ) -> tuple[str, ...]:
+        """Normalize reviewed string sets without inventing a value."""
         return tuple(sorted({value.strip() for value in values}))
 
     @model_validator(mode="after")

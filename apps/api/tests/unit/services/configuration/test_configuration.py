@@ -46,9 +46,14 @@ def test_reviewed_files_load_fail_closed_and_hashable() -> None:
     configs = load_all_configurations(CONFIG)
 
     assert configs.sources.scope_version == "phase1-reviewed-v1"
-    assert all(not source.enabled for source in configs.sources.sources)
+    enabled = tuple(source for source in configs.sources.sources if source.enabled)
+    assert tuple(source.source_id for source in enabled) == ("dcinside",)
+    assert enabled[0].authorization.status == "approved"
+    assert enabled[0].authorization.permitted_fields
     assert all(
-        source.authorization.status == "pending" for source in configs.sources.sources
+        source.authorization.status == "pending"
+        for source in configs.sources.sources
+        if not source.enabled
     )
     assert configs.sources.canonical_sha256 != configs.keywords.canonical_sha256
     assert len(configs.metrics.canonical_sha256) == 64

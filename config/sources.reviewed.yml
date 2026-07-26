@@ -44,23 +44,39 @@ sources:
       max_accepted_per_source_run: 20
   - source_id: dcinside
     provider: dcinside
-    state: pending_evidence
-    enabled: false
+    state: enabled
+    enabled: true
     scope:
       subreddits: []
-      gallery_ids: []
-      reviewed_route: null
+      gallery_ids:
+        - predictionmarket
+      reviewed_route: /mini/board/lists/?id=predictionmarket
     authorization:
-      status: pending
-      evidence: []
-      effective_at: null
-      expires_at: null
+      status: approved
+      evidence:
+        - evidence_id: dcinside-policy-robots-2026-07-26
+          location: docs/evidence/source-scope-register.md
+          sha256: 5b65d6694981b034c06aa7a2109903aa65a94bd130028613ab6f2b75db2532e2
+          reviewed_at: "2026-07-26T10:39:26Z"
+      effective_at: "2026-07-26T10:39:26Z"
+      expires_at: "2026-08-25T10:39:26Z"
       revoked_at: null
-      permitted_methods: []
-      permitted_routes: []
-      purpose: null
+      permitted_methods:
+        - GET
+      permitted_routes:
+        - /mini/board/lists/?id=predictionmarket
+        - /mini/board/view/?id=predictionmarket&no={post_id}
+      permitted_fields:
+        - source_post_id
+        - canonical_url
+        - title
+        - body
+        - published_at
+        - comments_count
+        - upvote_or_score
+      purpose: personal_noncommercial_prediction_market_monitoring_no_model_training
     limits:
-      requests_per_minute: 10
+      requests_per_minute: 30
       concurrency: 1
       max_page_size: 20
       max_accepted_per_run: 80

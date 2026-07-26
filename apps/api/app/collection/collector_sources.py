@@ -8,7 +8,11 @@ from pydantic import BaseModel, RootModel, SecretStr
 
 from app.domain.enums import SourcePlatform
 
-from .adapters.dcinside import DCInsideAdapter
+from .adapters.dcinside import (
+    DCInsideAdapter,
+    DCInsideFetchRequest,
+    create_dcinside_http_client,
+)
 from .adapters.models import (
     AdapterPage,
     BlockedFetchRequest,
@@ -92,6 +96,19 @@ async def source_executions(
                 )
             )
             continue
+        if platform is SourcePlatform.DCINSIDE:
+            http_client = await stack.enter_async_context(
+                create_dcinside_http_client()
+            )
+            executions.append(
+                _dcinside_execution(
+                    source_id,
+                    DCInsideAdapter(http_client),
+                    context,
+                    required(environment, "DCINSIDE_USER_AGENT"),
+                )
+            )
+            continue
         executions.append(
             _blocked_execution(source_id, _blocked_adapter(platform), context)
         )
@@ -127,6 +144,35 @@ def _reddit_execution(
     )
 
 
+def _dcinside_execution(
+    source_id: UUID,
+    adapter: DCInsideAdapter,
+    context: PreflightContext,
+    user_agent: str,
+) -> SourceExecution:
+    def preflight() -> PreflightResult:
+        return adapter.preflight(context)
+
+    async def fetch_page(state: PageCursor) -> AdapterPage:
+        return await adapter.fetch_page(
+            DCInsideFetchRequest(
+                preflight=context,
+                cursor=state.cursor,
+                accepted_so_far=state.accepted_count,
+                page_size=20,
+                user_agent=user_agent,
+            )
+        )
+
+    return SourceExecution(
+        source_id=source_id,
+        platform=SourcePlatform.DCINSIDE,
+        preflight=preflight,
+        fetch_page=fetch_page,
+        authorization=context.authorization,
+    )
+
+
 def _blocked_execution(
     source_id: UUID,
     adapter: EvidenceBlockedAdapter,
@@ -149,8 +195,6 @@ def _blocked_execution(
 
 
 def _blocked_adapter(platform: SourcePlatform) -> EvidenceBlockedAdapter:
-    if platform is SourcePlatform.DCINSIDE:
-        return DCInsideAdapter()
     if platform is SourcePlatform.TOSS_SECURITIES:
         return TossSecuritiesAdapter()
     if platform is SourcePlatform.NAVER_FINANCE:

@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from app.collection.adapters.dcinside import DCInsideAdapter
 from app.collection.adapters.models import (
     BlockedFetchRequest,
     BlockedKind,
@@ -22,11 +21,6 @@ NOW = datetime(2026, 7, 21, 6, 0, tzinfo=UTC)
     ("adapter", "kind", "code"),
     [
         (
-            DCInsideAdapter(),
-            BlockedKind.BLOCKED_AUTHORIZATION,
-            "written_reviewed_route_missing",
-        ),
-        (
             NaverFinanceAdapter(),
             BlockedKind.BLOCKED_POLICY,
             "robots_and_automation_policy_block",
@@ -39,7 +33,7 @@ NOW = datetime(2026, 7, 21, 6, 0, tzinfo=UTC)
     ],
 )
 def test_current_source_evidence_blocks_preflight(
-    adapter: DCInsideAdapter | NaverFinanceAdapter | TossSecuritiesAdapter,
+    adapter: NaverFinanceAdapter | TossSecuritiesAdapter,
     kind: BlockedKind,
     code: str,
 ) -> None:
@@ -58,10 +52,10 @@ def test_current_source_evidence_blocks_preflight(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "adapter",
-    [DCInsideAdapter(), NaverFinanceAdapter(), TossSecuritiesAdapter()],
+    [NaverFinanceAdapter(), TossSecuritiesAdapter()],
 )
 async def test_blocked_adapters_have_no_fetch_or_circumvention_path(
-    adapter: DCInsideAdapter | NaverFinanceAdapter | TossSecuritiesAdapter,
+    adapter: NaverFinanceAdapter | TossSecuritiesAdapter,
 ) -> None:
     # Given
     request = BlockedFetchRequest(

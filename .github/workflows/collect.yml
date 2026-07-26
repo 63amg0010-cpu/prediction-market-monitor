@@ -31,6 +31,7 @@ jobs:
           enable-cache: true
       - run: uv sync --package monitor-api --locked
       - name: Collect through the scoped API
+        working-directory: apps/api
         run: uv run --package monitor-api python -m app.collection.cli collect
         env:
           MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
@@ -39,5 +40,6 @@ jobs:
           MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
           MONITOR_COMMAND_ID: ${{ inputs.command_id }}
           MONITOR_SOURCE_BINDINGS_JSON: ${{ secrets.MONITOR_SOURCE_BINDINGS_JSON }}
+          DCINSIDE_USER_AGENT: ${{ vars.DCINSIDE_USER_AGENT }}
           REDDIT_OAUTH_ACCESS_TOKEN: ${{ secrets.REDDIT_OAUTH_ACCESS_TOKEN }}
           REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT }}

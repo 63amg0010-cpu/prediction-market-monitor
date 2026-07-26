@@ -11,11 +11,11 @@ The active config is `config/sources.reviewed.yml`.
 | Source | Current decision | Reason |
 |---|---|---|
 | Reddit | `pending_evidence`, `enabled: false` | OAuth Data API registration/approval, token scope, exact limits, and observed route evidence are not yet recorded. |
-| DCInside | `pending_evidence`, `enabled: false` | Generic robots allowance is not enough for monitoring approval; exact reviewed route is missing. |
+| DCInside | `approved`, `enabled: true` | Exact `predictionmarket` mini-gallery list/view routes, retained fields, 30 RPM, concurrency 1, reviewer, and 2026-08-25 recheck expiry are recorded. |
 | Toss | `pending_evidence`, `enabled: false` | No written or official community-data authorization has been recorded. |
 | Naver Finance | `pending_evidence`, `enabled: false` | Current reviewed evidence blocks community-board crawling; no approved API/client route is recorded. |
 
-Toss and Naver are mutually exclusive. At most one may be enabled after its own authorization is approved.
+Toss and Naver are mutually exclusive. At most one may be enabled after its own authorization is approved. Reddit remains blocked until an approved OAuth Data API grant is supplied; DCInside is the only currently enabled source.
 
 ## Activation checklist
 

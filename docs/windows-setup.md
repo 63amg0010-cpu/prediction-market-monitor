@@ -139,10 +139,12 @@ Remove-Item Env:RP07_DATABASE_URL
 
 비공개 저장소에서는 예약 검증 잡이 자동으로 건너뛰므로 운영 승인 증거를 모을 수 없습니다. 잔여 무료 Actions 시간을 직접 확인한 뒤 한 번만 수동 검증할 때는 `authorize_private_minutes=true`를 선택할 수 있지만, 이는 예약 실행이나 유료 사용을 승인하지 않습니다. 공개 여부를 확인할 수 없으면 실패-폐쇄 상태로 두세요.
 
-## 7. 현재 차단된 작업
+## 7. 현재 운영 상태와 차단된 작업
 
-- 수집원 활성화: `config/sources.reviewed.yml`의 모든 소스가 `enabled: false`입니다.
+- 디시인사이드 수집: `predictionmarket` 미니 갤러리의 공개 목록·본문 경로만 활성화되어 있습니다. 작성자 정보·댓글 본문·이미지·원시 HTML은 저장하지 않습니다.
+- Reddit 수집: 승인된 OAuth Data API 토큰이 없어 차단 상태입니다. 토큰 없이 HTML/JSON/RSS로 우회하지 않습니다.
+- 토스·네이버 증권 수집: 허용된 공식 커뮤니티 경로가 없어 차단 상태입니다.
 - Windows Codex 분석: `docs/evidence/codex-capability-proof.md`의 전체 판정이 `FAIL - blocked_capability`입니다.
 - 85% 관련성 정확도: 인간 라벨 400개 벤치마크가 아직 없습니다.
 - 3시간 freshness: 30 consecutive UTC days 증거가 아직 없습니다.
-- 실제 무료 배포: Vercel/Supabase/GitHub 계정 설정과 live URL 검증 증거가 필요합니다.
+- 실제 무료 배포의 30일 freshness 인정: 라이브 수집과 별개로 연속 30일 증거가 필요합니다.
