@@ -16,3 +16,5 @@ def test_vercelignore_preserves_generated_python_function_dependencies() -> None
     # When/Then: only the repository-root development environment is ignored.
     assert "/.venv/" in rules
     assert ".venv/" not in rules
+    assert ".vercel/" not in rules
+    assert "/.vercel/" not in rules

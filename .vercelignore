@@ -28,7 +28,6 @@ out/
 .agents/
 .codex/
 .codegraph/
-.vercel/
 .gjc/
 .omo/
 .debug-journal.md
