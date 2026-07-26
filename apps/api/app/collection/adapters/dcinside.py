@@ -125,19 +125,13 @@ class DCInsideAdapter:
             1 for item in items if isinstance(item, NormalizedPost)
         )
         rejected_count = len(items) - accepted_count
-        termination = (
-            PageTermination.REVIEWED_POST_CAP
-            if request.accepted_so_far + accepted_count
-            >= MAX_ACCEPTED_PER_SOURCE_RUN
-            else PageTermination.SOURCE_EXHAUSTED
-        )
         return AdapterPage(
             items=items,
             next_cursor=None,
             accepted_count=accepted_count,
             rejected_count=rejected_count,
             rate_limit=_empty_rate_limit(),
-            termination=termination,
+            termination=PageTermination.SOURCE_EXHAUSTED,
         )
 
 

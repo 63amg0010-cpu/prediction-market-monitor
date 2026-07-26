@@ -18,6 +18,7 @@ from app.collection.adapters.models import (
     BlockedKind,
     HttpMethod,
     NormalizedPost,
+    PageTermination,
     PreflightBlocked,
     PreflightContext,
     SourceAuthorizationDecision,
@@ -179,7 +180,7 @@ async def test_dcinside_fetches_only_reviewed_gallery_without_author_identity() 
             DCInsideFetchRequest(
                 preflight=_context(_authorization()),
                 cursor=None,
-                accepted_so_far=0,
+                accepted_so_far=19,
                 page_size=2,
                 user_agent=USER_AGENT,
             )
@@ -202,6 +203,7 @@ async def test_dcinside_fetches_only_reviewed_gallery_without_author_identity() 
         "https://gall.dcinside.com/mini/board/view/"
         "?id=predictionmarket&no=31"
     )
+    assert page.termination is PageTermination.SOURCE_EXHAUSTED
     serialized = post.model_dump_json()
     assert "수집하면 안 되는 작성자" not in serialized
     assert "author" not in serialized
