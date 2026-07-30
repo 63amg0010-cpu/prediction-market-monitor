@@ -42,15 +42,33 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - "5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MIGRATION_QA_ADMIN_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/postgres
+      MIGRATION_QA_DATABASE_URL: postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/monitor_migration_qa
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_sha || github.sha }}
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Validate immutable workflow identity
         shell: bash
@@ -202,38 +220,54 @@ jobs:
       - name: Enable pinned pnpm
         run: corepack enable pnpm && corepack prepare pnpm@9.15.4 --activate
 
-      - name: Install Python dependencies
-        run: uv sync --frozen --all-packages
+      - name: Bind immutable local-QA inputs
+        id: local-qa-bindings
+        shell: bash
+        env:
+          ATTEMPT_INPUT: ${{ inputs.attempt }}
+          BASE_SHA_CANDIDATE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event_name == 'push' && github.event.before || '' }}
+          EXPECTED_REVIEWED_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.expected_sha || github.sha }}
+        run: |
+          set -euo pipefail
+          reviewed_sha="$(git rev-parse HEAD)"
+          test "$reviewed_sha" = "$EXPECTED_REVIEWED_SHA"
+          base_sha="$BASE_SHA_CANDIDATE"
+          if [[ ! "$base_sha" =~ ^[0-9a-f]{40}$ ]] || [[ "$base_sha" =~ ^0{40}$ ]]; then
+            base_sha="$(git rev-parse HEAD^)"
+          fi
+          git cat-file -e "$base_sha^{commit}"
+          attempt_index="${ATTEMPT_INPUT:-$GITHUB_RUN_ATTEMPT}"
+          [[ "$attempt_index" =~ ^[1-9][0-9]*$ ]]
+          attempt_dir="$RUNNER_TEMP/todo11-ci/run-$GITHUB_RUN_ID/attempt-$attempt_index"
+          {
+            echo "base_sha=$base_sha"
+            echo "reviewed_sha=$reviewed_sha"
+            echo "attempt_dir=$attempt_dir"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Install web dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Run guarded Todo 11 twenty-command manifest
+        env:
+          ATTEMPT_DIR: ${{ steps.local-qa-bindings.outputs.attempt_dir }}
+          BASE_SHA: ${{ steps.local-qa-bindings.outputs.base_sha }}
+          REVIEWED_SHA: ${{ steps.local-qa-bindings.outputs.reviewed_sha }}
+        run: |
+          uv run --frozen --package monitor-api python \
+            apps/api/scripts/local_qa_orchestrator.py \
+            --attempt-dir "$ATTEMPT_DIR" \
+            --database-admin-url-env MIGRATION_QA_ADMIN_DATABASE_URL \
+            --database-url-env MIGRATION_QA_DATABASE_URL \
+            --base-sha "$BASE_SHA" \
+            --reviewed-sha "$REVIEWED_SHA" \
+            --wrapper ci
 
-      - name: Run API tests
-        run: uv run --package monitor-api pytest apps/api/tests/contracts apps/api/tests/unit -q
-
-      - name: Run URL-gated RP-07 PostgreSQL retention proof
-        run: uv run --package monitor-api pytest apps/api/tests/integration/test_postgres_report_retention.py -q -rs
-
-      - name: Check API lint
-        run: uv run --all-packages ruff check apps/api/app apps/api/scripts apps/api/tests workers/codex-worker/src workers/codex-worker/tests
-
-      - name: Check API types
-        run: uv run --all-packages basedpyright apps/api/app apps/api/scripts apps/api/tests workers/codex-worker/src workers/codex-worker/tests
-
-      - name: Run web tests
-        run: pnpm --filter @prediction-market/web test
-
-      - name: Check generated API contract drift
-        run: pnpm --filter @prediction-market/web check:api
-
-      - name: Check web types
-        run: pnpm --filter @prediction-market/web typecheck
-
-      - name: Check web lint
-        run: pnpm --filter @prediction-market/web lint
-
-      - name: Build web
-        run: pnpm --filter @prediction-market/web build
+      - name: Upload redacted local-QA receipts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-gate-${{ github.event_name == 'workflow_dispatch' && inputs.dispatch_nonce || github.run_id }}-attempt-${{ github.event_name == 'workflow_dispatch' && inputs.attempt || github.run_attempt }}
+          path: ${{ steps.local-qa-bindings.outputs.attempt_dir }}
+          retention-days: 1
+          if-no-files-found: error
 
   deploy-preview:
     if: ${{ github.ref != 'refs/heads/main' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}

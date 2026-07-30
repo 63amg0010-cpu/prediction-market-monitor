@@ -254,7 +254,7 @@ def test_ci_workflow_builds_tests_and_deploys_vercel_artifacts() -> None:
     # Python API, and prebuilt deploys for the web app.
     assert set(triggers) == {"push", "pull_request", "workflow_dispatch"}
     assert permissions == {"contents": "read"}
-    assert ci_job["timeout-minutes"] == 15
+    assert ci_job["timeout-minutes"] == 45
     assert preview_job["environment"] == "preview-deploy"
     assert production_job["environment"] == "production-deploy"
     assert preview_job["needs"] == "ci"
@@ -264,7 +264,7 @@ def test_ci_workflow_builds_tests_and_deploys_vercel_artifacts() -> None:
     assert "npm install --global vercel@51.7.0" in rendered
     assert "vercel pull --yes" in rendered
     assert "vercel build" in rendered
-    assert "pnpm --filter @prediction-market/web test" in rendered
+    assert "apps/api/scripts/local_qa_orchestrator.py" in rendered
     assert "vercel deploy --prod --yes" in rendered
     assert "vercel deploy --prebuilt" in rendered
     assert "--prod" in rendered

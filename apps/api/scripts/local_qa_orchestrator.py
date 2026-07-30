@@ -229,7 +229,7 @@ def _validate_options(options: Options) -> None:
         re.fullmatch(r"[0-9a-f]{40}", value) is not None
         for value in (options.base_sha, options.reviewed_sha)
     )
-    if not valid_shas or options.wrapper not in {"powershell", "git-bash"} or not all((options.admin_env, options.database_env)):  # noqa: E501
+    if not valid_shas or options.wrapper not in {"powershell", "git-bash", "ci"} or not all((options.admin_env, options.database_env)):  # noqa: E501
         raise RuntimeError("orchestrator_arguments_invalid")
 
 
@@ -244,7 +244,7 @@ def _parse(argv: list[str]) -> Options:
     _ = parser.add_argument("--expect-meta-failure", action="store_true")
     _ = parser.add_argument(
         "--wrapper",
-        choices=("powershell", "git-bash"),
+        choices=("powershell", "git-bash", "ci"),
         required=True,
     )
     args = parser.parse_args(argv)

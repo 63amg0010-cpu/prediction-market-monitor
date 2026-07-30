@@ -138,6 +138,21 @@ def _assert_attempt_artifact(
     assert options["if-no-files-found"] == "error"
 
 
+def _assert_no_production_database_credential(
+    workflow: dict[str, JsonValue],
+) -> None:
+    rendered = yaml.safe_dump(workflow).upper()
+    for forbidden in (
+        "MIGRATION_DATABASE_URL",
+        "DATABASE_URL: ${{ SECRETS.",
+        "PG_DUMP_DATABASE_URL",
+        "PG_RESTORE_DATABASE_URL",
+        "SUPABASE_SERVICE",
+        "SERVICE_ROLE",
+    ):
+        assert forbidden not in rendered
+
+
 def _assert_no_database_credential(workflow: dict[str, JsonValue]) -> None:
     rendered = yaml.safe_dump(workflow).upper()
     for forbidden in (
@@ -167,7 +182,7 @@ def test_ci_manual_dispatch_is_attempt_indexed_and_credential_free() -> None:
         job,
         expected_name="ci-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}",
     )
-    _assert_no_database_credential(workflow)
+    _assert_no_production_database_credential(workflow)
 
     concurrency = _mapping(workflow["concurrency"])
     assert concurrency["group"] == (
@@ -181,6 +196,91 @@ def test_ci_manual_dispatch_is_attempt_indexed_and_credential_free() -> None:
     assert production["if"] == (
         "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
     )
+
+
+def test_ci_executes_shared_guarded_twenty_command_manifest() -> None:
+    workflow = _workflow("ci.yml")
+    job = _job(workflow, "ci")
+    named = _named_steps(job)
+
+    services = _mapping(job["services"])
+    postgres = _mapping(services["postgres"])
+    assert postgres["image"] == "postgres:17-alpine"
+    assert postgres["ports"] == ["5432:5432"]
+    service_env = _mapping(postgres["env"])
+    assert service_env == {
+        "POSTGRES_DB": "postgres",
+        "POSTGRES_PASSWORD": "postgres",
+        "POSTGRES_USER": "postgres",
+    }
+    assert "pg_isready -U postgres -d postgres" in str(postgres["options"])
+
+    environment = _mapping(job["env"])
+    assert environment == {
+        "MIGRATION_QA_ADMIN_DATABASE_URL": (
+            "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/postgres"
+        ),
+        "MIGRATION_QA_DATABASE_URL": (
+            "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/"
+            "monitor_migration_qa"
+        ),
+    }
+    rendered_environment = yaml.safe_dump(environment).lower()
+    assert "supabase" not in rendered_environment
+    assert "production" not in rendered_environment
+
+    checkout = next(
+        step
+        for step in _steps(job)
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert _mapping(checkout["with"])["fetch-depth"] == 0
+
+    bindings = named["Bind immutable local-QA inputs"]
+    binding_command = str(bindings["run"])
+    assert 'reviewed_sha="$(git rev-parse HEAD)"' in binding_command
+    assert 'test "$reviewed_sha" = "$EXPECTED_REVIEWED_SHA"' in binding_command
+    assert "github.event.pull_request.base.sha" in str(bindings["env"])
+    assert "github.event.before" in str(bindings["env"])
+    assert "base_sha=$base_sha" in binding_command
+    assert "reviewed_sha=$reviewed_sha" in binding_command
+    assert "attempt_dir=$attempt_dir" in binding_command
+
+    gate = named["Run guarded Todo 11 twenty-command manifest"]
+    gate_command = str(gate["run"])
+    assert gate_command.splitlines() == [
+        "uv run --frozen --package monitor-api python \\",
+        "  apps/api/scripts/local_qa_orchestrator.py \\",
+        '  --attempt-dir "$ATTEMPT_DIR" \\',
+        "  --database-admin-url-env MIGRATION_QA_ADMIN_DATABASE_URL \\",
+        "  --database-url-env MIGRATION_QA_DATABASE_URL \\",
+        '  --base-sha "$BASE_SHA" \\',
+        '  --reviewed-sha "$REVIEWED_SHA" \\',
+        "  --wrapper ci",
+    ]
+    gate_env = _mapping(gate["env"])
+    assert gate_env == {
+        "ATTEMPT_DIR": "${{ steps.local-qa-bindings.outputs.attempt_dir }}",
+        "BASE_SHA": "${{ steps.local-qa-bindings.outputs.base_sha }}",
+        "REVIEWED_SHA": "${{ steps.local-qa-bindings.outputs.reviewed_sha }}",
+    }
+
+    upload = named["Upload redacted local-QA receipts"]
+    assert upload["if"] == "${{ always() }}"
+    upload_options = _mapping(upload["with"])
+    assert upload_options["if-no-files-found"] == "error"
+    assert upload_options["retention-days"] == 1
+    assert upload_options["path"] == (
+        "${{ steps.local-qa-bindings.outputs.attempt_dir }}"
+    )
+    artifact_prefix = "-attempt-${{ github.event_name == 'workflow_dispatch' "
+    artifact_suffix = f"{artifact_prefix}&& inputs.attempt || github.run_attempt }}}}"
+    assert str(upload_options["name"]).endswith(artifact_suffix)
+
+    workflow_text = (WORKFLOWS / "ci.yml").read_text(encoding="utf-8")
+    assert workflow_text.count("local_qa_orchestrator.py") == 1
+    assert "Run API tests" not in named
+    assert "Run web tests" not in named
 
 
 def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
