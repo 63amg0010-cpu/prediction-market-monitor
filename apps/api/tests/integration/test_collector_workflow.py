@@ -20,7 +20,12 @@ from app.collection.collector_workflow import (
     SourceExecution,
 )
 from app.collection.page_commit import page_chain_link
-from app.domain.enums import BudgetDecisionStatus, RunStatus, SourcePlatform
+from app.domain.enums import (
+    BudgetDecisionStatus,
+    CommandStatus,
+    RunStatus,
+    SourcePlatform,
+)
 from tests.integration.collector_test_constants import (
     COMMIT_ID,
     IDEMPOTENCY_KEY,
@@ -80,7 +85,7 @@ async def test_collect_command_executes_the_full_control_plane_in_order() -> Non
     }
 
     # When: the same collect command used by the CLI entrypoint executes.
-    await execute_collect_command(
+    completions = await execute_collect_command(
         environment,
         control,
         (source,),
@@ -111,6 +116,9 @@ async def test_collect_command_executes_the_full_control_plane_in_order() -> Non
         True,
     ]
     assert workflow_control.completion is not None
+    assert len(completions) == 1
+    assert completions[0].status is CommandStatus.SUCCEEDED
+    assert completions[0].completed_at == NOW
     outcome = workflow_control.completion.source_outcomes[0]
     assert outcome.terminal_status is RunStatus.SUCCEEDED
     assert outcome.last_page_commit_id == UUID(int=2)
@@ -153,7 +161,7 @@ async def test_collect_command_blocks_source_before_materialization() -> None:
 
     # When: the actual collect command evaluates the source gate.
     with pytest.raises(SourceBlockedError):
-        await execute_collect_command(
+        _ = await execute_collect_command(
             environment,
             control,
             (source,),
@@ -197,7 +205,7 @@ async def test_hard_stop_claim_completes_without_provider_fetch() -> None:
     )
 
     # When: the production collector executes that precomputed terminal run.
-    await execute_collect_command(
+    completions = await execute_collect_command(
         {
             "MONITOR_SCOPE_VERSION": "scope-v1",
             "MONITOR_DEPLOYMENT_ACTIVATION_AT": NOW.isoformat(),
@@ -222,6 +230,9 @@ async def test_hard_stop_claim_completes_without_provider_fetch() -> None:
         "complete",
     ]
     assert workflow_control.completion is not None
+    assert len(completions) == 1
+    assert completions[0].status is CommandStatus.SUCCEEDED
+    assert completions[0].completed_at == NOW
     outcome = workflow_control.completion.source_outcomes[0]
     assert outcome.terminal_status is RunStatus.SKIPPED_QUOTA
     assert outcome.skip_decision_id == skip_decision_id

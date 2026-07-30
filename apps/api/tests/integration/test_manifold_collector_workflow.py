@@ -147,7 +147,7 @@ async def test_manifold_provider_failure_does_not_abort_dcinside_commit() -> Non
             fetch_page=dcinside_success,
         ),
     )
-    await execute_collect_command(
+    completions = await execute_collect_command(
         {
             "MONITOR_SCOPE_VERSION": "scope-v1",
             "MONITOR_DEPLOYMENT_ACTIVATION_AT": NOW.isoformat(),
@@ -163,6 +163,9 @@ async def test_manifold_provider_failure_does_not_abort_dcinside_commit() -> Non
 
     assert "dcinside:page" in events
     assert control.completion is not None
+    assert len(completions) == 1
+    assert completions[0].status is CommandStatus.SUCCEEDED
+    assert completions[0].completed_at == NOW
     outcomes = {
         outcome.run_id: outcome for outcome in control.completion.source_outcomes
     }

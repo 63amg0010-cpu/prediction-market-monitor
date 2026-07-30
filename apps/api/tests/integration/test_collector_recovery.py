@@ -16,7 +16,7 @@ from app.collection.collector_workflow import (
     SourceExecution,
 )
 from app.collection.page_commit import page_chain_link
-from app.domain.enums import SourcePlatform
+from app.domain.enums import CommandStatus, SourcePlatform
 from tests.integration.collector_test_constants import (
     COMMIT_ID,
     IDEMPOTENCY_KEY,
@@ -87,7 +87,7 @@ async def test_collect_command_recovers_from_authoritative_page_conflict(
     )
 
     # When: the public CLI workflow handles the typed HTTP conflict.
-    await execute_collect_command(
+    completions = await execute_collect_command(
         {
             "MONITOR_SCOPE_VERSION": "scope-v1",
             "MONITOR_DEPLOYMENT_ACTIVATION_AT": NOW.isoformat(),
@@ -107,6 +107,9 @@ async def test_collect_command_recovers_from_authoritative_page_conflict(
     assert fetched[-1].cursor == recovered.expected_cursor
     assert control.checkpoint_calls == 2
     assert control.completion is not None
+    assert len(completions) == 1
+    assert completions[0].status is CommandStatus.SUCCEEDED
+    assert completions[0].completed_at == NOW
     outcome = control.completion.source_outcomes[0]
     assert outcome.committed_page_count == recovered.next_page_ordinal + 1
     assert events.index("checkpoint:recovered") < len(events) - 1
@@ -153,7 +156,7 @@ async def test_collect_command_reloads_then_rejects_non_replay_conflict() -> Non
 
     # When: the public workflow receives a non-replayable 409.
     with pytest.raises(CollectionError) as raised:
-        await execute_collect_command(
+        _ = await execute_collect_command(
             {
                 "MONITOR_SCOPE_VERSION": "scope-v1",
                 "MONITOR_DEPLOYMENT_ACTIVATION_AT": NOW.isoformat(),
