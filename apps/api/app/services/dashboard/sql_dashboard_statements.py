@@ -4,7 +4,9 @@ from typing import Final
 
 from sqlalchemy import TextClause, text
 
-DASHBOARD_METRICS: Final[TextClause] = text(
+from .sql_read_statements import post_search_statement
+
+DASHBOARD_METRICS: Final[TextClause] = post_search_statement(
     """
     WITH ranked_analysis AS (
         SELECT a.*,
@@ -23,6 +25,7 @@ DASHBOARD_METRICS: Final[TextClause] = text(
     ), filtered_posts AS (
         SELECT p.id, p.current_version_id, p.published_at
         FROM posts p
+        JOIN post_versions pv ON pv.id = p.current_version_id
         JOIN community_sources s ON s.id = p.source_id
         WHERE (CAST(:country AS text) IS NULL OR s.country::text = :country)
           AND (CAST(:source_id AS uuid) IS NULL OR p.source_id = :source_id)
@@ -32,6 +35,7 @@ DASHBOARD_METRICS: Final[TextClause] = text(
                 AND pm.matched
                 AND pm.normalized_phrase ILIKE ('%' || :keyword || '%')
           ))
+    __POST_SEARCH_PREDICATE__
     ), current_posts AS (
         SELECT * FROM filtered_posts
         WHERE published_at >= :current_start AND published_at < :current_end

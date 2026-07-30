@@ -4,10 +4,24 @@ from typing import Final
 
 from sqlalchemy import TextClause, text
 
-POST_COUNT: Final[TextClause] = text(
+POST_SEARCH_PREDICATE: Final = """
+      AND (CAST(:search_pattern AS text) IS NULL OR
+           pv.search_text COLLATE "C" LIKE :search_pattern ESCAPE '\\')
+"""
+
+_SEARCH_PREDICATE_MARKER: Final = "__POST_SEARCH_PREDICATE__"
+
+
+def post_search_statement(statement: str) -> TextClause:
+    """Compile static SQL with the shared bound literal-search predicate."""
+    return text(statement.replace(_SEARCH_PREDICATE_MARKER, POST_SEARCH_PREDICATE))
+
+
+POST_COUNT: Final[TextClause] = post_search_statement(
     """
     SELECT count(*) AS total_items
     FROM posts p
+    JOIN post_versions pv ON pv.id = p.current_version_id
     JOIN community_sources s ON s.id = p.source_id
     WHERE (CAST(:country AS text) IS NULL OR s.country::text = :country)
       AND (CAST(:source_id AS uuid) IS NULL OR p.source_id = :source_id)
@@ -21,10 +35,11 @@ POST_COUNT: Final[TextClause] = text(
             AND pm.matched
             AND pm.normalized_phrase ILIKE ('%' || :keyword || '%')
       ))
+    __POST_SEARCH_PREDICATE__
     """
 )
 
-POST_PAGE: Final[TextClause] = text(
+POST_PAGE: Final[TextClause] = post_search_statement(
     """
     WITH ranked_analysis AS (
         SELECT a.*,
@@ -66,6 +81,7 @@ POST_PAGE: Final[TextClause] = text(
             AND pm.matched
             AND pm.normalized_phrase ILIKE ('%' || :keyword || '%')
       ))
+    __POST_SEARCH_PREDICATE__
     ORDER BY p.published_at DESC, p.id DESC
     LIMIT :page_size OFFSET :page_offset
     """

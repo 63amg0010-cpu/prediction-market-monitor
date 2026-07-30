@@ -7,7 +7,12 @@ from app.services.dashboard.sql_dashboard_statements import (
     DASHBOARD_METRICS,
     SOURCE_EVIDENCE,
 )
-from app.services.dashboard.sql_read_statements import REPORT_PAGE
+from app.services.dashboard.sql_read_statements import (
+    POST_COUNT,
+    POST_PAGE,
+    POST_SEARCH_PREDICATE,
+    REPORT_PAGE,
+)
 from app.services.dashboard.sql_rows import SourceRow
 
 
@@ -79,3 +84,34 @@ def test_report_sql_loads_only_retained_artifacts_needed_for_reproduction() -> N
     assert "v.report_payload_sha256" in statement
     assert "FROM posts" not in statement
     assert "FROM analyses" not in statement
+
+
+def test_search_predicate_is_identical_for_count_page_and_metrics() -> None:
+    # Given: all post-reading SQL surfaces and the one shared literal predicate.
+    statements = tuple(map(str, (POST_COUNT, POST_PAGE, DASHBOARD_METRICS)))
+
+    # When: each compiled statement is inspected.
+    # Then: each contains exactly one byte-identical shared predicate.
+    assert all(statement.count(POST_SEARCH_PREDICATE) == 1 for statement in statements)
+
+
+def test_search_sql_is_parameterized_literal_like_with_c_collation() -> None:
+    # Given: the shared general-search SQL predicate.
+    # When: its bind and operator contract is inspected.
+    # Then: the generated indexed column, bind, and explicit escaping are enforced.
+    assert 'pv.search_text COLLATE "C"' in POST_SEARCH_PREDICATE
+    assert "LIKE :search_pattern" in POST_SEARCH_PREDICATE
+    assert "ESCAPE '\\'" in POST_SEARCH_PREDICATE
+    assert ":search_pattern" in POST_SEARCH_PREDICATE
+    assert "search_fold_v1(" not in POST_SEARCH_PREDICATE
+    assert "ILIKE" not in POST_SEARCH_PREDICATE
+
+
+def test_keyword_predicate_remains_distinct_from_general_search() -> None:
+    # Given: the posts query with both reviewed keyword and literal search filters.
+    statement = str(POST_PAGE)
+
+    # When / Then: the semantic keyword relation remains and both binds are present.
+    assert "FROM post_matches pm" in statement
+    assert "pm.normalized_phrase ILIKE ('%' || :keyword || '%')" in statement
+    assert ":search_pattern" in statement

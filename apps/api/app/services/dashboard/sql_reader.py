@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Final, TypedDict, final
 
+from .filters import search_like_pattern_v1
 from .metric_projection import dashboard_projection
 from .models import (
     DashboardResponse,
@@ -134,6 +135,7 @@ class _FilterParameters(TypedDict):
     country: str | None
     source_id: str | None
     keyword: str | None
+    search_pattern: str | None
     published_from: datetime | None
     published_to: datetime | None
 
@@ -143,6 +145,9 @@ def _filter_parameters(filters: DashboardFilters) -> _FilterParameters:
         "country": None if filters.country is None else filters.country.value,
         "source_id": None if filters.source_id is None else str(filters.source_id),
         "keyword": filters.keyword,
+        "search_pattern": (
+            None if filters.search is None else search_like_pattern_v1(filters.search)
+        ),
         "published_from": filters.published_from,
         "published_to": filters.published_to,
     }
