@@ -62,6 +62,7 @@ class SourceProvider(StrEnum):
 
     REDDIT = "reddit"
     DCINSIDE = "dcinside"
+    MANIFOLD = "manifold"
     TOSS = "toss"
     NAVER_FINANCE = "naver_finance"
 

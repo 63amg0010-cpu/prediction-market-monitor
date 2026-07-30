@@ -51,13 +51,51 @@ def test_reviewed_files_load_fail_closed_and_hashable() -> None:
     assert enabled[0].authorization.status == "approved"
     assert enabled[0].authorization.permitted_fields
     assert all(
-        source.authorization.status == "pending"
-        for source in configs.sources.sources
-        if not source.enabled
+        source.authorization.status != "denied" for source in configs.sources.sources
     )
     assert configs.sources.canonical_sha256 != configs.keywords.canonical_sha256
     assert len(configs.metrics.canonical_sha256) == 64
     assert configs.categories.default_category == "uncategorized"
+
+
+def test_pending_source_configuration_is_disabled_when_loaded() -> None:
+    # Given: the repository-reviewed source configuration.
+    sources = load_sources_config(CONFIG / "sources.reviewed.yml")
+
+    # When: pending sources are selected through the typed configuration boundary.
+    pending = tuple(
+        source for source in sources.sources if source.state == "pending_evidence"
+    )
+
+    # Then: every pending source remains fail-closed.
+    assert pending
+    assert all(not source.enabled for source in pending)
+    assert all(source.authorization.status == "pending" for source in pending)
+
+
+def test_manifold_source_is_reviewed_but_remains_fail_closed() -> None:
+    # Given: the repository-reviewed source configuration.
+    sources = load_sources_config(CONFIG / "sources.reviewed.yml")
+
+    # When: the Manifold source is selected.
+    manifold = next(
+        source for source in sources.sources if source.provider == "manifold"
+    )
+
+    # Then: approval is recorded while runtime activation remains fail-closed.
+    assert manifold.source_id == "manifold"
+    assert manifold.state == "disabled"
+    assert not manifold.enabled
+    assert manifold.scope.reviewed_route is None
+    assert manifold.authorization.status == "approved"
+    assert len(manifold.authorization.evidence) == 1
+    assert manifold.authorization.permitted_routes == (
+        "/v0/comments",
+        "/v0/markets",
+    )
+    assert manifold.limits.requests_per_minute == 30
+    assert manifold.limits.concurrency == 1
+    assert manifold.limits.max_accepted_per_source_run == 20
 
 
 def test_reordering_yaml_mapping_does_not_change_hash() -> None:

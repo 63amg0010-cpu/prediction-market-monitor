@@ -81,6 +81,45 @@ sources:
       max_page_size: 20
       max_accepted_per_run: 80
       max_accepted_per_source_run: 20
+  - source_id: manifold
+    provider: manifold
+    state: disabled
+    enabled: false
+    scope:
+      subreddits: []
+      gallery_ids: []
+      reviewed_route: null
+    authorization:
+      status: approved
+      evidence:
+        - evidence_id: manifold-authorization-2026-07-28
+          location: docs/evidence/manifold-authorization.json
+          sha256: dad1c59e6595eb539208f0dbe73d77c89a77ac2cc91e272bde2fc305d30cdca1
+          reviewed_at: "2026-07-28T02:00:00Z"
+      effective_at: "2026-07-28T02:00:00Z"
+      expires_at: "2026-08-31T02:00:00Z"
+      revoked_at: null
+      permitted_methods:
+        - GET
+      permitted_routes:
+        - /v0/markets
+        - /v0/comments
+      permitted_fields:
+        - market.id
+        - market.question
+        - market.market_slug
+        - market.neutral_url
+        - comment.id
+        - comment.contractId
+        - comment.createdTime
+        - comment.content.text
+      purpose: personal_noncommercial_prediction_market_monitoring_no_model_training
+    limits:
+      requests_per_minute: 30
+      concurrency: 1
+      max_page_size: 20
+      max_accepted_per_run: 20
+      max_accepted_per_source_run: 20
   - source_id: toss
     provider: toss
     state: pending_evidence
