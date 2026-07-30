@@ -1,0 +1,29 @@
+{
+  "id": "comment-456",
+  "contractId": "market-123",
+  "createdTime": 1784570400000,
+  "content": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "public-body-literal-keep"
+            }
+          ]
+        }
+      ]
+  },
+  "userId": "user-id-sentinel-1",
+  "user": {
+    "name": "creator-name-sentinel-2",
+    "avatarUrl": "https://avatars.example.test/avatar-sentinel-3",
+    "profileUrl": "https://profiles.example.test/profile-sentinel-4",
+    "address": "wallet-sentinel-5"
+  },
+  "arbitraryExtra": {
+    "nestedIdentity": "extra-sentinel-6"
+  }
+}
