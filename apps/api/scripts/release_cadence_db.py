@@ -170,6 +170,11 @@ def _attempt_parameters(
         "slot_key": attempt.slot_key,
         "started_at": attempt.started_at,
         "workflow_mode": attempt.mode,
+        "workflow_file": attempt.workflow_file,
+        "workflow_run_id": attempt.workflow_run_id,
+        "workflow_run_attempt": attempt.workflow_run_attempt,
+        "cadence_attempt": attempt.cadence_attempt,
+        "failed_predecessor_attempt_id": attempt.failed_predecessor_attempt_id,
     }
 
 

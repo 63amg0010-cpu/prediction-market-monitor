@@ -13,6 +13,10 @@ from app.api.routes.activation_evidence import (
     ActivationEvidenceOidcAuthorizer,
     SqlActivationEvidenceVerifier,
 )
+from app.api.routes.cadence_workflow import (
+    CadenceWorkflowOidcAuthorizer,
+    SqlCadenceWorkflowRecorder,
+)
 from app.api.routes.workflow_dispatch_claim import (
     SqlWorkflowDispatchClaimer,
     WorkflowDispatchClaimOidcAuthorizer,
@@ -130,6 +134,18 @@ def dependencies_from_environment(
             else SqlWorkflowDispatchClaimer(
                 sessions,
                 WorkflowDispatchClaimOidcAuthorizer(
+                    verifier=GitHubJwksOidcVerifier(),
+                    clock=SystemClock(),
+                    repository=settings.github_repository,
+                ),
+            )
+        ),
+        cadence_workflow_recorder=(
+            None
+            if sessions is None or settings is None
+            else SqlCadenceWorkflowRecorder(
+                sessions,
+                CadenceWorkflowOidcAuthorizer(
                     verifier=GitHubJwksOidcVerifier(),
                     clock=SystemClock(),
                     repository=settings.github_repository,

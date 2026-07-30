@@ -88,12 +88,16 @@ INSERT_ATTEMPT: Final[TextClause] = text(
     INSERT INTO cadence_workflow_attempts (
         attempt_id, cadence_epoch_id, schedule_kind, slot_key,
         workflow_mode, started_at, completed_at, epoch_sha256,
-        binding_sha256, scope_sha256, eligible, accepted,
+        binding_sha256, scope_sha256, workflow_file, workflow_run_id,
+        workflow_run_attempt, cadence_attempt,
+        failed_predecessor_attempt_id, eligible, accepted,
         reason_code, retry_permitted
     ) VALUES (
         :attempt_id, :epoch_id, :schedule_kind, :slot_key,
         :workflow_mode, :started_at, :completed_at, :epoch_sha,
-        :binding_sha, :scope_sha, :eligible, false,
+        :binding_sha, :scope_sha, :workflow_file, :workflow_run_id,
+        :workflow_run_attempt, :cadence_attempt,
+        :failed_predecessor_attempt_id, :eligible, false,
         :reason, :retry_permitted
     ) ON CONFLICT (attempt_id) DO NOTHING
     """

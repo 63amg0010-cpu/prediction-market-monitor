@@ -42,6 +42,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/release/cadence-workflow-attempt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record */
+        post: operations["record_internal_release_cadence_workflow_attempt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/release/workflow-dispatch-claim": {
         parameters: {
             query?: never;
@@ -799,6 +816,107 @@ export interface components {
          * @enum {string}
          */
         BudgetDecisionStatus: "allow" | "soft_limit" | "hard_stop";
+        /**
+         * CadenceWorkflowAttemptReceipt
+         * @description Schema-closed receipt; recording and cadence credit are distinct.
+         */
+        CadenceWorkflowAttemptReceipt: {
+            /**
+             * Attempt Id
+             * Format: uuid
+             */
+            attempt_id: string;
+            /** Cadence Accepted */
+            cadence_accepted: boolean;
+            /**
+             * Created At Db
+             * Format: date-time
+             */
+            created_at_db: string;
+            /** Reason */
+            reason: string;
+            /** Receipt Sha256 */
+            receipt_sha256: string;
+            /**
+             * Recorded
+             * @constant
+             */
+            recorded: true;
+            /** Retry Permitted */
+            retry_permitted: boolean;
+            /**
+             * Schema
+             * @constant
+             */
+            schema: "cadence-workflow-attempt-receipt.v1";
+        };
+        /**
+         * CadenceWorkflowAttemptRequest
+         * @description Exact GitHub run and frozen cadence slot submitted after operation.
+         */
+        CadenceWorkflowAttemptRequest: {
+            /** Cadence Attempt */
+            cadence_attempt: number;
+            /**
+             * Completed At
+             * Format: date-time
+             */
+            completed_at: string;
+            /**
+             * Environment
+             * @enum {string}
+             */
+            environment: "production-collector" | "production-verifier";
+            /**
+             * Epoch Id
+             * Format: uuid
+             */
+            epoch_id: string;
+            /**
+             * Event
+             * @enum {string}
+             */
+            event: "schedule" | "workflow_dispatch";
+            /** Failed Predecessor Attempt Id */
+            failed_predecessor_attempt_id?: string | null;
+            /** Head Sha */
+            head_sha: string;
+            /**
+             * Ref
+             * @constant
+             */
+            ref: "refs/heads/main";
+            /** Repository */
+            repository: string;
+            /** Run Attempt */
+            run_attempt: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Schedule Kind
+             * @enum {string}
+             */
+            schedule_kind: "collection" | "verifier";
+            /** Slot Key */
+            slot_key: string;
+            /** Source Results */
+            source_results: components["schemas"]["SourceResult"][];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Workflow
+             * @enum {string}
+             */
+            workflow: "collect.yml" | "verify.yml";
+            /**
+             * Workflow Mode
+             * @enum {string}
+             */
+            workflow_mode: "schedule" | "retry" | "manual";
+        };
         /**
          * CheckpointResponse
          * @description Sole persisted cursor and page-chain replay position.
@@ -1762,6 +1880,21 @@ export interface components {
          */
         SourcePlatform: "reddit" | "dcinside" | "toss_securities" | "naver_finance" | "manifold";
         /**
+         * SourceResult
+         * @description Public-safe exact source result emitted by the legacy operation.
+         */
+        SourceResult: {
+            /** Receipt Sha256 */
+            receipt_sha256: string;
+            /**
+             * Source Id
+             * Format: uuid
+             */
+            source_id: string;
+            /** Succeeded */
+            succeeded: boolean;
+        };
+        /**
          * SourceStatus
          * @description One reviewed source's latest collection and publication evidence.
          */
@@ -2282,6 +2415,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActivationEvidenceReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_internal_release_cadence_workflow_attempt_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CadenceWorkflowAttemptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CadenceWorkflowAttemptReceipt"];
                 };
             };
             /** @description Validation Error */

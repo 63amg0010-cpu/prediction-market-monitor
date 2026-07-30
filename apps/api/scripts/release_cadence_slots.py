@@ -21,6 +21,7 @@ from apps.api.scripts.release_cadence_models import (
 
 WINDOW: Final = timedelta(days=30)
 EXPECTED_SOURCE_COUNT: Final = 2
+SECOND_ATTEMPT: Final = 2
 SHA256_LENGTH: Final = 64
 EXPECTED_COUNTS: Final = {"collection": 240, "verifier": 2880}
 START_LIMITS: Final = {
@@ -101,7 +102,23 @@ def _identity_rejection(
         (attempt.epoch_id != epoch.epoch_id, "epoch_mismatch"),
         (attempt.schedule_kind != slot.schedule_kind, "schedule_kind_mismatch"),
         (attempt.slot_key != slot.slot_key, "slot_key_mismatch"),
-        (attempt.mode != "schedule", "manual_mode_excluded"),
+        (attempt.mode not in {"schedule", "retry"}, "manual_mode_excluded"),
+        (
+            attempt.mode == "schedule"
+            and (
+                attempt.cadence_attempt != 1
+                or attempt.failed_predecessor_attempt_id is not None
+            ),
+            "initial_attempt_identity_invalid",
+        ),
+        (
+            attempt.mode == "retry"
+            and (
+                attempt.cadence_attempt != SECOND_ATTEMPT
+                or attempt.failed_predecessor_attempt_id is None
+            ),
+            "retry_proof_required",
+        ),
         (attempt.epoch_sha256 != epoch.epoch_sha256, "epoch_hash_mismatch"),
         (attempt.binding_sha256 != epoch.binding_sha256, "binding_mismatch"),
         (attempt.scope_sha256 != epoch.scope_sha256, "scope_mismatch"),

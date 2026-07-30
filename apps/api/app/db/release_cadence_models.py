@@ -4,11 +4,13 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     UniqueConstraint,
     text,
@@ -180,6 +182,13 @@ class CadenceWorkflowAttempt(Base):
             unique=True,
             postgresql_where=text("accepted"),
         ),
+        Index(
+            "uq_cadence_workflow_run_attempt",
+            "workflow_file",
+            "workflow_run_id",
+            "workflow_run_attempt",
+            unique=True,
+        ),
     )
 
     attempt_id: Mapped[UUID] = mapped_column(
@@ -191,6 +200,15 @@ class CadenceWorkflowAttempt(Base):
     schedule_kind: Mapped[str] = mapped_column(String(16), nullable=False)
     slot_key: Mapped[str] = mapped_column(String(20), nullable=False)
     workflow_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    workflow_file: Mapped[str] = mapped_column(String(64), nullable=False)
+    workflow_run_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    workflow_run_attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    cadence_attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    failed_predecessor_attempt_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("cadence_workflow_attempts.attempt_id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     started_at: Mapped[datetime] = utc_timestamp()
     completed_at: Mapped[datetime] = utc_timestamp()
     epoch_sha256: Mapped[str] = sha256_hex()

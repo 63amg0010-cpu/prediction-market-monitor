@@ -59,6 +59,13 @@ CREATE TABLE IF NOT EXISTS cadence_workflow_attempts (
     schedule_kind varchar(16) NOT NULL,
     slot_key char(20) NOT NULL,
     workflow_mode varchar(32) NOT NULL,
+    workflow_file varchar(64) NOT NULL
+        CHECK (workflow_file IN ('collect.yml', 'verify.yml')),
+    workflow_run_id bigint NOT NULL CHECK (workflow_run_id > 0),
+    workflow_run_attempt integer NOT NULL CHECK (workflow_run_attempt > 0),
+    cadence_attempt integer NOT NULL CHECK (cadence_attempt IN (1, 2)),
+    failed_predecessor_attempt_id uuid
+        REFERENCES cadence_workflow_attempts(attempt_id) ON DELETE RESTRICT,
     started_at timestamptz NOT NULL,
     completed_at timestamptz NOT NULL,
     epoch_sha256 char(64) NOT NULL
@@ -82,11 +89,19 @@ CREATE TABLE IF NOT EXISTS cadence_workflow_attempts (
     CONSTRAINT cadence_attempt_acceptance
         CHECK (NOT accepted OR (eligible AND reason_code = 'accepted')),
     CONSTRAINT cadence_attempt_retry
-        CHECK (NOT accepted OR NOT retry_permitted)
+        CHECK (NOT accepted OR NOT retry_permitted),
+    CONSTRAINT cadence_attempt_branch CHECK (
+        (cadence_attempt = 1 AND failed_predecessor_attempt_id IS NULL)
+        OR (cadence_attempt = 2 AND failed_predecessor_attempt_id IS NOT NULL)
+    )
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_cadence_accepted_slot
 ON cadence_workflow_attempts (cadence_epoch_id, schedule_kind, slot_key)
 WHERE accepted;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cadence_workflow_run_attempt
+ON cadence_workflow_attempts (
+    workflow_file, workflow_run_id, workflow_run_attempt
+);
 CREATE TABLE IF NOT EXISTS cadence_attempt_source_receipts (
     attempt_id uuid NOT NULL
         REFERENCES cadence_workflow_attempts(attempt_id) ON DELETE RESTRICT,

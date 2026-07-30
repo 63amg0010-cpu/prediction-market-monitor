@@ -165,7 +165,53 @@ def _assert_no_database_credential(workflow: dict[str, JsonValue]) -> None:
         assert forbidden not in rendered
 
 
-def test_ci_manual_dispatch_is_attempt_indexed_and_credential_free() -> None:
+def _assert_cadence_recording(
+    job: dict[str, JsonValue], *, kind: str, operation_name: str
+) -> None:
+    steps = _steps(job)
+    named = _named_steps(job)
+    resolve = named["Resolve exact cadence branch"]
+    operation = named[operation_name]
+    record = named["Record durable cadence attempt"]
+    upload = named["Upload public cadence receipt"]
+    assert steps.index(resolve) < steps.index(operation) < steps.index(record)
+    assert steps.index(record) < steps.index(upload)
+
+    resolve_command = str(resolve["run"])
+    assert f"slot --kind {kind}" in resolve_command
+    assert 'mode="schedule"' in resolve_command
+    assert 'mode="retry"' in resolve_command
+    assert 'mode="manual"' in resolve_command
+    assert 'test "$INPUT_ATTEMPT" = "2"' in resolve_command
+    assert "CADENCE_FAILED_ATTEMPT" in resolve_command
+
+    operation_environment = _mapping(operation["env"])
+    assert operation_environment["MONITOR_CADENCE_RESULT_PATH"] == (
+        "${{ runner.temp }}/cadence-operation-result.json"
+    )
+    assert operation_environment["MONITOR_CADENCE_SLOT_KEY"] == (
+        "${{ env.CADENCE_SLOT_KEY }}"
+    )
+
+    record_command = str(record["run"])
+    assert "release_cadence_workflow_client.py record" in record_command
+    assert '--mode "$CADENCE_MODE"' in record_command
+    assert '--cadence-attempt "$CADENCE_ATTEMPT"' in record_command
+    assert '--failed-predecessor-attempt-id "$CADENCE_FAILED_ATTEMPT"' in (
+        record_command
+    )
+    assert "$RUNNER_TEMP/cadence-operation-result.json" in record_command
+    assert "$RUNNER_TEMP/cadence-attempt-receipt.json" in record_command
+    assert "DATABASE_URL" not in record_command
+
+    options = _mapping(upload["with"])
+    assert options["retention-days"] == 1
+    assert options["if-no-files-found"] == "error"
+    assert options["path"] == "${{ runner.temp }}/cadence-attempt-receipt.json"
+    assert "cadence-operation-result" not in str(options)
+
+
+def test_ci_manual_dispatch_is_attempt_indexed_and_production_credential_free() -> None:
     workflow = _workflow("ci.yml")
     job = _job(workflow, "ci")
 
@@ -312,6 +358,11 @@ def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
             "-attempt-${{ inputs.attempt }}"
         ),
     )
+    _assert_cadence_recording(
+        job,
+        kind="collection",
+        operation_name="Collect through the scoped API",
+    )
 
 
 def test_verify_preserves_schedule_public_gate_and_read_only_claim() -> None:
@@ -346,6 +397,11 @@ def test_verify_preserves_schedule_public_gate_and_read_only_claim() -> None:
             "verify-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
             "-attempt-${{ inputs.attempt }}"
         ),
+    )
+    _assert_cadence_recording(
+        job,
+        kind="verifier",
+        operation_name="Verify freshness through the scoped API",
     )
     _assert_no_database_credential(workflow)
 

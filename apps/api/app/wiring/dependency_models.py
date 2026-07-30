@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from app.services.dashboard.ports import DashboardReader, ScopeAuthorizer
     from app.services.identity.cron import CronCredentialVerifier
     from app.services.identity.exchanges import ServiceTokenExchangeHandler
+    from app.services.release.cadence_workflow_models import (
+        CadenceWorkflowRecorder,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +45,7 @@ class AppDependencies:
     health_probe: DatabaseHealthProbe | None = None
     activation_evidence_verifier: ActivationEvidenceVerifier | None = None
     workflow_dispatch_claimer: WorkflowDispatchClaimer | None = None
+    cadence_workflow_recorder: CadenceWorkflowRecorder | None = None
 
 
 __all__ = ("AppDependencies",)

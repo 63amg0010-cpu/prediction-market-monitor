@@ -479,6 +479,201 @@
         "title": "BudgetDecisionStatus",
         "type": "string"
       },
+      "CadenceWorkflowAttemptReceipt": {
+        "additionalProperties": false,
+        "description": "Schema-closed receipt; recording and cadence credit are distinct.",
+        "properties": {
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "cadence_accepted": {
+            "title": "Cadence Accepted",
+            "type": "boolean"
+          },
+          "created_at_db": {
+            "format": "date-time",
+            "title": "Created At Db",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Receipt Sha256",
+            "type": "string"
+          },
+          "recorded": {
+            "const": true,
+            "title": "Recorded",
+            "type": "boolean"
+          },
+          "retry_permitted": {
+            "title": "Retry Permitted",
+            "type": "boolean"
+          },
+          "schema": {
+            "const": "cadence-workflow-attempt-receipt.v1",
+            "title": "Schema",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "attempt_id",
+          "recorded",
+          "cadence_accepted",
+          "reason",
+          "retry_permitted",
+          "created_at_db",
+          "receipt_sha256"
+        ],
+        "title": "CadenceWorkflowAttemptReceipt",
+        "type": "object"
+      },
+      "CadenceWorkflowAttemptRequest": {
+        "additionalProperties": false,
+        "description": "Exact GitHub run and frozen cadence slot submitted after operation.",
+        "properties": {
+          "cadence_attempt": {
+            "maximum": 2.0,
+            "minimum": 1.0,
+            "title": "Cadence Attempt",
+            "type": "integer"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "environment": {
+            "enum": [
+              "production-collector",
+              "production-verifier"
+            ],
+            "title": "Environment",
+            "type": "string"
+          },
+          "epoch_id": {
+            "format": "uuid",
+            "title": "Epoch Id",
+            "type": "string"
+          },
+          "event": {
+            "enum": [
+              "schedule",
+              "workflow_dispatch"
+            ],
+            "title": "Event",
+            "type": "string"
+          },
+          "failed_predecessor_attempt_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Predecessor Attempt Id"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "ref": {
+            "const": "refs/heads/main",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repository": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Repository",
+            "type": "string"
+          },
+          "run_attempt": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Attempt",
+            "type": "integer"
+          },
+          "run_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "schedule_kind": {
+            "enum": [
+              "collection",
+              "verifier"
+            ],
+            "title": "Schedule Kind",
+            "type": "string"
+          },
+          "slot_key": {
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:00Z$",
+            "title": "Slot Key",
+            "type": "string"
+          },
+          "source_results": {
+            "items": {
+              "$ref": "#/components/schemas/SourceResult"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Source Results",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "workflow": {
+            "enum": [
+              "collect.yml",
+              "verify.yml"
+            ],
+            "title": "Workflow",
+            "type": "string"
+          },
+          "workflow_mode": {
+            "enum": [
+              "schedule",
+              "retry",
+              "manual"
+            ],
+            "title": "Workflow Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "workflow",
+          "head_sha",
+          "ref",
+          "event",
+          "environment",
+          "run_id",
+          "run_attempt",
+          "epoch_id",
+          "schedule_kind",
+          "slot_key",
+          "workflow_mode",
+          "cadence_attempt",
+          "started_at",
+          "completed_at",
+          "source_results"
+        ],
+        "title": "CadenceWorkflowAttemptRequest",
+        "type": "object"
+      },
       "CheckpointResponse": {
         "additionalProperties": false,
         "description": "Sole persisted cursor and page-chain replay position.",
@@ -2924,6 +3119,33 @@
         "title": "SourcePlatform",
         "type": "string"
       },
+      "SourceResult": {
+        "additionalProperties": false,
+        "description": "Public-safe exact source result emitted by the legacy operation.",
+        "properties": {
+          "receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Receipt Sha256",
+            "type": "string"
+          },
+          "source_id": {
+            "format": "uuid",
+            "title": "Source Id",
+            "type": "string"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "source_id",
+          "succeeded",
+          "receipt_sha256"
+        ],
+        "title": "SourceResult",
+        "type": "object"
+      },
       "SourceStatus": {
         "additionalProperties": false,
         "description": "One reviewed source's latest collection and publication evidence.",
@@ -4142,6 +4364,65 @@
           }
         },
         "summary": "Verify",
+        "tags": [
+          "release"
+        ]
+      }
+    },
+    "/internal/release/cadence-workflow-attempt": {
+      "post": {
+        "operationId": "record_internal_release_cadence_workflow_attempt_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CadenceWorkflowAttemptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CadenceWorkflowAttemptReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record",
         "tags": [
           "release"
         ]

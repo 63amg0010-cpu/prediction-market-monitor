@@ -10,6 +10,12 @@ from app.api.routes.verification import (
     VerificationSnapshot,
 )
 
+from .cadence_result import (
+    CadenceOperationResult,
+    CadenceSourceResult,
+    result_hash,
+    write_result,
+)
 from .cli_config import json_bytes, required
 from .control_plane_client import ControlPlaneClient
 from .verification import SourceVerificationFacts, derive_source_result
@@ -22,10 +28,15 @@ async def verify(environment: Mapping[str, str]) -> None:
     """Fetch one no-store snapshot and record its expected verifier slot."""
     scope = required(environment, "MONITOR_SCOPE_VERSION")
     started_at = datetime.now(UTC)
-    slot = started_at.replace(
-        minute=started_at.minute - started_at.minute % 15,
-        second=0,
-        microsecond=0,
+    slot_value = environment.get("MONITOR_CADENCE_SLOT_KEY")
+    slot = (
+        datetime.fromisoformat(slot_value)
+        if slot_value
+        else started_at.replace(
+            minute=started_at.minute - started_at.minute % 15,
+            second=0,
+            microsecond=0,
+        )
     )
     async with ControlPlaneClient(
         required(environment, "MONITOR_API_URL"), environment
@@ -42,6 +53,26 @@ async def verify(environment: Mapping[str, str]) -> None:
             token,
             content=json_bytes(payload.model_dump(mode="json")),
         )
+        output = environment.get("MONITOR_CADENCE_RESULT_PATH")
+        if output:
+            completed_at = datetime.now(UTC)
+            write_result(
+                output,
+                CadenceOperationResult(
+                    schedule_kind="verifier",
+                    slot_key=slot.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    started_at=started_at.isoformat(),
+                    completed_at=completed_at.isoformat(),
+                    source_results=tuple(
+                        CadenceSourceResult(
+                            source_id=item.source_id,
+                            succeeded=item.status.value == "passed",
+                            receipt_sha256=result_hash(item),
+                        )
+                        for item in payload.source_results
+                    ),
+                ),
+            )
 
 
 def observation(

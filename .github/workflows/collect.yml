@@ -38,6 +38,14 @@ on:
         description: Immutable attempt number (1 or 2)
         required: true
         type: number
+      cadence_slot_key:
+        description: Original UTC slot key for an explicit cadence retry
+        required: false
+        type: string
+      failed_cadence_attempt_id:
+        description: Failed attempt-1 UUID authorizing an explicit cadence retry
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -198,6 +206,40 @@ jobs:
           version: "0.5.30"
           enable-cache: true
       - run: uv sync --package monitor-api --locked
+      - name: Resolve exact cadence branch
+        shell: bash
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_SLOT_KEY: ${{ inputs.cadence_slot_key }}
+          INPUT_FAILED_ATTEMPT: ${{ inputs.failed_cadence_attempt_id }}
+          INPUT_ATTEMPT: ${{ inputs.attempt }}
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            slot_key="$(uv run --package monitor-api python apps/api/scripts/release_cadence_workflow_client.py slot --kind collection)"
+            mode="schedule"
+            cadence_attempt="1"
+            failed_attempt="none"
+          elif [ "$INPUT_MODE" = "cadence-retry" ]; then
+            test "$INPUT_ATTEMPT" = "2"
+            [[ "$INPUT_SLOT_KEY" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00Z$ ]]
+            [[ "$INPUT_FAILED_ATTEMPT" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
+            slot_key="$INPUT_SLOT_KEY"
+            mode="retry"
+            cadence_attempt="2"
+            failed_attempt="$INPUT_FAILED_ATTEMPT"
+          else
+            slot_key="$(uv run --package monitor-api python apps/api/scripts/release_cadence_workflow_client.py slot --kind collection)"
+            mode="manual"
+            cadence_attempt="1"
+            failed_attempt="none"
+          fi
+          {
+            echo "CADENCE_SLOT_KEY=$slot_key"
+            echo "CADENCE_MODE=$mode"
+            echo "CADENCE_ATTEMPT=$cadence_attempt"
+            echo "CADENCE_FAILED_ATTEMPT=$failed_attempt"
+          } >> "$GITHUB_ENV"
       - name: Collect through the scoped API
         working-directory: apps/api
         run: uv run --package monitor-api python -m app.collection.cli collect
@@ -208,7 +250,31 @@ jobs:
           MONITOR_DEPLOYMENT_ACTIVATION_AT: ${{ vars.MONITOR_DEPLOYMENT_ACTIVATION_AT }}
           MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
           MONITOR_COMMAND_ID: ${{ inputs.command_id }}
+          MONITOR_CADENCE_RESULT_PATH: ${{ runner.temp }}/cadence-operation-result.json
+          MONITOR_CADENCE_SLOT_KEY: ${{ env.CADENCE_SLOT_KEY }}
           MONITOR_SOURCE_BINDINGS_JSON: ${{ secrets.MONITOR_SOURCE_BINDINGS_JSON }}
           DCINSIDE_USER_AGENT: ${{ vars.DCINSIDE_USER_AGENT }}
           REDDIT_OAUTH_ACCESS_TOKEN: ${{ secrets.REDDIT_OAUTH_ACCESS_TOKEN }}
           REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT }}
+      - name: Record durable cadence attempt
+        shell: bash
+        env:
+          CADENCE_EPOCH_ID: ${{ vars.CADENCE_EPOCH_ID }}
+          MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
+        run: |
+          set -euo pipefail
+          uv run --package monitor-api python apps/api/scripts/release_cadence_workflow_client.py record \
+            --api-url "$MONITOR_API_URL" \
+            --epoch-id "$CADENCE_EPOCH_ID" \
+            --mode "$CADENCE_MODE" \
+            --cadence-attempt "$CADENCE_ATTEMPT" \
+            --failed-predecessor-attempt-id "$CADENCE_FAILED_ATTEMPT" \
+            --result "$RUNNER_TEMP/cadence-operation-result.json" \
+            --json-out "$RUNNER_TEMP/cadence-attempt-receipt.json"
+      - name: Upload public cadence receipt
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cadence-collection-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cadence-attempt-receipt.json
+          retention-days: 1
+          if-no-files-found: error

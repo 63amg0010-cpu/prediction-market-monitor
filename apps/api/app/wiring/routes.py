@@ -12,6 +12,10 @@ from app.api.routes.activation_evidence import (
     create_activation_evidence_router,
 )
 from app.api.routes.auth import create_auth_router
+from app.api.routes.cadence_workflow import (
+    UnavailableCadenceWorkflowRecorder,
+    create_cadence_workflow_router,
+)
 from app.api.routes.collector import create_collector_router
 from app.api.routes.commands import create_commands_router
 from app.api.routes.cron import create_cron_router
@@ -99,6 +103,12 @@ def include_application_routes(
         create_workflow_dispatch_claim_router(
             dependencies.workflow_dispatch_claimer
             or UnavailableWorkflowDispatchClaimer()
+        )
+    )
+    application.include_router(
+        create_cadence_workflow_router(
+            dependencies.cadence_workflow_recorder
+            or UnavailableCadenceWorkflowRecorder()
         )
     )
     application.include_router(create_auth_router(auth_handler))

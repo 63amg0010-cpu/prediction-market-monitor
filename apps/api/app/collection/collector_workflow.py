@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
+    from .completion_models import CompletionResponse
+
 
 async def run_collection_workflow(
     control: CollectorControlPlane,
@@ -27,7 +29,7 @@ async def run_collection_workflow(
     sources: tuple[SourceExecution, ...],
     secret_factory: Callable[[], CommandSecrets],
     clock: Callable[[], datetime],
-) -> None:
+) -> tuple[CompletionResponse, ...]:
     """Run each durable command through claim, pages, and completion."""
     await control.authenticate()
     source_map = {source.source_id: source for source in sources}
@@ -47,6 +49,7 @@ async def run_collection_workflow(
             invocation.scope_version, invocation.deployment_activation_at
         )
     )
+    completions: list[CompletionResponse] = []
     for command_id in command_ids:
         secrets = secret_factory()
         reserved = await control.reserve(
@@ -88,7 +91,7 @@ async def run_collection_workflow(
             )
             for source_id in invocation.source_ids
         ]
-        _ = await control.complete(
+        completed = await control.complete(
             command_id,
             CompletionRequest(
                 completion_idempotency_key=secrets.completion_idempotency_key,
@@ -97,6 +100,8 @@ async def run_collection_workflow(
                 source_outcomes=tuple(outcomes),
             ),
         )
+        completions.append(completed)
+    return tuple(completions)
 
 
 __all__ = (

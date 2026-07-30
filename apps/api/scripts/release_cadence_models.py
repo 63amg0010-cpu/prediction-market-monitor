@@ -80,6 +80,11 @@ class CadenceAttempt:
     binding_sha256: str
     scope_sha256: str
     source_subreceipts: tuple[SourceSubreceipt, ...]
+    workflow_file: str = "unknown.yml"
+    workflow_run_id: int = 1
+    workflow_run_attempt: int = 1
+    cadence_attempt: int = 1
+    failed_predecessor_attempt_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
