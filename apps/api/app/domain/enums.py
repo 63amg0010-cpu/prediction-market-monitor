@@ -19,6 +19,7 @@ class SourcePlatform(StrEnum):
     DCINSIDE = "dcinside"
     TOSS_SECURITIES = "toss_securities"
     NAVER_FINANCE = "naver_finance"
+    MANIFOLD = "manifold"
 
 
 class Country(StrEnum):
@@ -89,6 +90,7 @@ class TerminalReason(StrEnum):
     SOURCE_EXHAUSTED = "source_exhausted"
     REVIEWED_PAGE_CAP = "reviewed_page_cap"
     REVIEWED_POST_CAP = "reviewed_post_cap"
+    REVIEWED_BYTE_CAP = "reviewed_byte_cap"
 
 
 class PageItemDisposition(StrEnum):

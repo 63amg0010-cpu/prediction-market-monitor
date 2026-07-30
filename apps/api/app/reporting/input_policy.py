@@ -169,5 +169,7 @@ def _source_platform(provider: SourceProvider) -> SourcePlatform:
             return SourcePlatform.TOSS_SECURITIES
         case SourceProvider.NAVER_FINANCE:
             return SourcePlatform.NAVER_FINANCE
+        case SourceProvider.MANIFOLD:
+            return SourcePlatform.MANIFOLD
         case _:
             assert_never(provider)

@@ -12,7 +12,8 @@ from sqlalchemy import (
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, column_property, mapped_column
+from sqlalchemy.sql import literal_column
 from sqlalchemy.sql.schema import SchemaItem
 
 from app.domain.enums import PostVersionReason
@@ -76,6 +77,9 @@ class PostVersion(Base):
     content_hash: Mapped[str] = sha256_hex()
     title: Mapped[str] = mapped_column(Text, nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    search_text: Mapped[str] = column_property(
+        literal_column("search_text", Text(collation="C"))
+    )
     body_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[PostVersionReason] = mapped_column(
         POST_VERSION_REASON, nullable=False
