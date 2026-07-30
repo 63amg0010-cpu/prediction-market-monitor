@@ -6,12 +6,17 @@ from typing import TYPE_CHECKING, ClassVar, Final
 
 import pytest
 from api.index import app as deployed_application
+from app.api.routes.activation_evidence import (
+    ActivationEvidenceOidcAuthorizer,
+    SqlActivationEvidenceVerifier,
+)
 from app.api.routes.health import HealthResponse
 from app.core.errors import ErrorEnvelope, IdentityErrorCode
 from app.domain.types import JsonValue  # noqa: TC002 - Pydantic runtime field.
 from app.main import AppDependencies, create_app
 from app.openapi import write_openapi
 from app.services.dashboard.models import DatabaseStatus
+from app.services.identity.github_oidc import GitHubJwksOidcVerifier
 from app.wiring.dependencies import dependencies_from_environment
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -36,6 +41,8 @@ REQUIRED_OPERATIONS = frozenset(
         ("POST", "/v1/admin/daily-reconcile"),
         ("POST", "/v1/auth/login"),
         ("POST", "/v1/auth/logout"),
+        ("POST", "/internal/release/activation-evidence-verify"),
+        ("POST", "/internal/release/workflow-dispatch-claim"),
         ("POST", "/v1/collector/commands/{command_id}/claim"),
         ("POST", "/v1/collector/commands/{command_id}/complete"),
         ("POST", "/v1/collector/commands/{command_id}/confirm-dispatch"),
@@ -212,6 +219,14 @@ async def test_complete_production_configuration_builds_phase2_dependencies() ->
     assert dependencies.service_token_handler is not None
     assert dependencies.scope_authorizer is not None
     assert dependencies.verification_handler is not None
+    assert isinstance(
+        dependencies.activation_evidence_verifier,
+        SqlActivationEvidenceVerifier,
+    )
+    oidc = vars(dependencies.activation_evidence_verifier).get("_oidc")
+    assert isinstance(oidc, ActivationEvidenceOidcAuthorizer)
+    verifier = vars(oidc).get("_verifier")
+    assert isinstance(verifier, GitHubJwksOidcVerifier)
     await dependencies.sessions.close()
 
 

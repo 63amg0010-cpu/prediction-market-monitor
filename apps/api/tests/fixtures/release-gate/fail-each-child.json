@@ -1,0 +1,27 @@
+{
+  "schema": "release-gate.fail-each-child.v1",
+  "failure_points": [
+    "provision",
+    "command-01",
+    "command-02",
+    "command-03",
+    "command-04",
+    "command-05",
+    "command-06",
+    "command-07",
+    "command-08",
+    "command-09",
+    "command-10",
+    "command-11",
+    "command-12",
+    "command-13",
+    "command-14",
+    "command-15",
+    "command-16",
+    "command-17",
+    "command-18",
+    "command-19",
+    "command-20",
+    "dispose"
+  ]
+}

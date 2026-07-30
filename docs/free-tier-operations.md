@@ -15,16 +15,15 @@ This project is designed for Vercel Hobby, Supabase Free, and GitHub Actions fre
 
 See `docs/evidence/provider-budget-proof.md` for the dated provider evidence. Recheck provider pages and account dashboards immediately before deployment.
 
-처음 배포하는 운영자는 [Cloud deployment handoff](cloud-deployment-handoff.md)를 0단계부터 순서대로 실행해야 합니다. 이 문서의 목록만 보고 설정을 추측하지 마세요.
+처음 배포하는 운영자는 [Cloud deployment handoff](cloud-deployment-handoff.md)를 0단계부터 순서대로 실행해야 합니다. Manifold release는 [Manifold staged release operations](manifold-release-operations.md)의 immutable evidence/attempt chain도 함께 따라야 합니다. 이 문서의 목록만 보고 설정을 추측하지 마세요.
 
 ## Budget actions
 
 | Threshold | Required behavior |
 |---|---|
-| below 70% | Continue only for enabled and authorized sources. |
-| 70% soft limit | Reduce scope, page count, or run size. Surface warning in operations UI. |
-| 80% hard limit | Stop new collection/writes with `skipped_quota`. Do not retry into paid usage. |
-| Unknown quota | Treat as blocked until measured. |
+| below 70% | Continue only when every applicable current and projected dimension is known and strictly below 70%. |
+| equal to or above 70% | `HOLD`; stop new activation/dispatch and reduce the bounded workload. Do not retry into paid usage. |
+| Unknown, stale, paid, overage-enabled, or unbounded | `HOLD`; it is never interpreted as zero. |
 
 ## GitHub Actions
 
@@ -52,13 +51,37 @@ Required repository variables/secrets:
 
 Collectors and verifiers must exchange GitHub OIDC through the API. They must not connect directly to PostgreSQL except the protected migration workflow.
 
-The ordinary CI job intentionally does not receive `RP07_DATABASE_URL`: no database password is placed in a broadly readable CI job. After a disposable local or Preview Supabase database has migrated to the single current head `20260723_0005`, an operator runs the same exact command once with a direct async URL in `RP07_DATABASE_URL`. Its binary result must be `1 passed`; `1 skipped` proves only that the CI URL gate is closed. Do not run this fixture against Production because it creates test rows and a restricted reader role.
+The ordinary CI job intentionally does not receive `RP07_DATABASE_URL`: no database password is placed in a broadly readable CI job. After a disposable local or Preview Supabase database has migrated to the single current head `20260727_0011`, an operator runs the same exact command once with a direct async URL in `RP07_DATABASE_URL`. Its binary result must be `1 passed`; `1 skipped` proves only that the CI URL gate is closed. Do not run this fixture against Production because it creates test rows and a restricted reader role.
 
-GitHub documents standard GitHub-hosted runners as free and unlimited for public repositories. The production cadence therefore requires an intentionally public repository using `ubuntu-latest`; larger runners are not eligible for this rule. Confirm that the public repository contains no committed secrets before schedules are enabled.
+GitHub documents standard GitHub-hosted runners as free for public repositories. The production cadence therefore requires a freshly verified public repository using `ubuntu-latest`; larger runners are not eligible for this rule. The same capture must prove paid/overage paths are disabled. Public-runner eligibility is only a cost input, not cadence evidence.
 
-Private GitHub Free cannot satisfy the required cadence under the no-paid policy. At workflow timeouts, collection is `8 * 6 * 31 = 1,488` minutes and independent verification is `96 * 3 * 31 = 8,928` minutes, for `10,416` minutes per 31-day month. The verifier's visibility condition skips every private-repository schedule. A private operator may run one manual verifier only after checking remaining included minutes and setting `authorize_private_minutes=true`; this is explicit one-run authorization, not approval for scheduled or paid usage. Production acceptance remains blocked in private mode.
+The exact acceptance horizon is 30 days: 240 collection slots and 2,880 verifier slots. Quota projection separately enumerates every provider's real hourly/daily/weekly/billing-month window and every bounded initial/retry/manual/rollback attempt that overlaps it. A private or unknown-visibility repository cannot satisfy the no-paid scheduled cadence and remains `HOLD`; a one-off private manual authorization does not authorize schedules or Production acceptance.
 
 Before enabling schedules, inspect repository visibility and Actions settings. Unknown or private visibility is fail-closed for the scheduled verifier. Do not remove the workflow visibility condition, enable larger runners, or add a paid scheduler as a fallback.
+
+## Immutable free-tier evidence
+
+Before the first Production write, the local measurement, four provider captures, and read-only Production measurement are six independent immutable leaves. Each is passed through the exact prefixes:
+
+```text
+uv run --package monitor-api python apps/api/scripts/fresh_search_release_gate.py canonical-hash
+uv run --package monitor-api python apps/api/scripts/fresh_search_release_gate.py evidence-import
+uv run --package monitor-api python apps/api/scripts/fresh_search_release_gate.py evidence-join
+uv run --package monitor-api python apps/api/scripts/free_tier_gate.py verify --phase pre-0010
+uv run --package monitor-api python apps/api/scripts/fresh_search_release_gate.py no-spend-preflight
+```
+
+The accepted pre-first-write result is always `<attemptDir>/free-tier/pre-0010/free-tier-result.json`. A post-`0010` refresh, when used, writes a new content-addressed directory and may only tighten the envelope; it never overwrites or substitutes for the pre-`0010` result.
+
+`U=max(10,000,3×trailing_30d_page_requests)` is the accepted normal single-admin scenario, not a bound on hostile traffic and not a provider-capacity reservation. The projection includes all known authorized requests, scheduled slots, bounded retries, rejected duplicate/orphan allowance, partial/failed payloads, artifacts, logs, encrypted backup reserve, Matrix B, and both API/Web deployment attempts. Provider drift or observed abuse is immediate operational `HOLD` and affected cadence slots receive no credit.
+
+Provider/account captures and read-only Production measurements must be younger than two hours when consumed. A provider UI/API that omits a counter yields `unknown`, never zero. Zero or N/A requires both immutable project configuration and provider usage evidence.
+
+## Public-repository evidence boundary
+
+The repository and its standard-runner artifacts are public. Only schema-closed redacted numeric/window projections, receipt hashes, statuses, neutral public evidence URLs, and authenticated-encryption backup ciphertext may be committed or uploaded.
+
+Plaintext dumps, raw billing/API responses, DOM exports, full-page billing screenshots, account identifiers, protected project/organization IDs, database URLs, secrets, raw provider payloads, and author/profile/address fields stay out of commits, logs, caches, attestations, and artifacts. Screenshots/responses/DOM remain owner-only and uncommitted; imports retain only allowlisted projections and content hashes. Backup artifacts must be pinned/checksummed `.age` ciphertext, decrypt-tested in the protected environment, with plaintext deleted before upload.
 
 ## Vercel
 

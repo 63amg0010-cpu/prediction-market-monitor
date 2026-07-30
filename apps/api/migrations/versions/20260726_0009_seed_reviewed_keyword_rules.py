@@ -11,6 +11,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     """Persist reviewed rules and deterministic matches for collected revisions."""
+    op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
     op.execute(
         """
         INSERT INTO keyword_rule_sets (

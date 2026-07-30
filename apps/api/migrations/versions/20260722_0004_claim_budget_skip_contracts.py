@@ -1,14 +1,10 @@
 """Persist claim authorization, budget scope, and skip observations."""
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, cast
 
 from alembic import op
-from app.db.operations_models import CollectionSkipObservation
+from frozen_migration_snapshots.revision_0004 import TABLE
 from sqlalchemy.schema import CreateTable
-
-if TYPE_CHECKING:
-    from sqlalchemy import Table
 
 revision: str = "20260722_0004"
 down_revision: str | None = "20260722_0003"
@@ -109,8 +105,7 @@ def upgrade() -> None:
     for statement in _ADD_COLUMNS:
         op.execute(statement)
     op.execute(_ADD_FOREIGN_KEYS)
-    table = cast("Table", CollectionSkipObservation.__table__)
-    op.execute(CreateTable(table, if_not_exists=True))
+    op.execute(CreateTable(TABLE, if_not_exists=True))
 
 
 def downgrade() -> None:

@@ -2,10 +2,13 @@
 
 ## DoneClaim
 
-The current public deployment and workflow sources passed the recorded local
-contract, lint, type, web-test, API-drift, and production-build checks. The
-secret-free result is retained in
+The current Todo11 workflow sources passed the recorded attempt-indexed workflow,
+cloud-handoff secret/environment, lint, and type checks. The dated broader
+deployment baseline and the current secret-free workflow delta are retained in
 `docs/evidence/deployment-validation/green.md`.
+
+The current delta does not restate the historical web, API-drift, build, or live
+Production checks as newly executed.
 
 Every cited artifact and every deployment source protected by the contract test
 has its current SHA-256 digest recorded in

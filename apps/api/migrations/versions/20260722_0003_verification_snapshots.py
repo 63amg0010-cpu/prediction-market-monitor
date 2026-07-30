@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 
 from alembic import op
-from app.db.models import metadata
+from frozen_migration_snapshots.revision_0003 import TABLES
 from sqlalchemy.schema import CreateTable
 
 revision: str = "20260722_0003"
@@ -61,11 +61,7 @@ _CREATE_IMMUTABLE_TRIGGERS = (
 
 def upgrade() -> None:
     """Create durable snapshot headers, source facts, and observation binding."""
-    for table in (
-        metadata.tables["verification_snapshots"],
-        metadata.tables["verification_snapshot_sources"],
-        metadata.tables["verification_snapshot_uses"],
-    ):
+    for table in TABLES:
         op.execute(CreateTable(table, if_not_exists=True))
     op.execute(_ADD_OBSERVATION_SNAPSHOT_FK)
     for statement in _CREATE_IMMUTABLE_TRIGGERS:

@@ -88,6 +88,150 @@
         "title": "AckKind",
         "type": "string"
       },
+      "ActivationEvidenceReceipt": {
+        "additionalProperties": false,
+        "description": "Schema-closed public receipt returned by the read-only verifier.",
+        "properties": {
+          "accepted": {
+            "const": true,
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "activation_nonce": {
+            "format": "uuid",
+            "title": "Activation Nonce",
+            "type": "string"
+          },
+          "attempt": {
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "attestation_generation": {
+            "minimum": 1.0,
+            "title": "Attestation Generation",
+            "type": "integer"
+          },
+          "attestation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Attestation Sha256",
+            "type": "string"
+          },
+          "database_time": {
+            "format": "date-time",
+            "title": "Database Time",
+            "type": "string"
+          },
+          "dispatch_nonce": {
+            "format": "uuid",
+            "title": "Dispatch Nonce",
+            "type": "string"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "reservation_receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reservation Receipt Sha256",
+            "type": "string"
+          },
+          "run_attempt": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Attempt",
+            "type": "integer"
+          },
+          "run_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "activation_nonce",
+          "attestation_generation",
+          "attestation_sha256",
+          "reservation_receipt_sha256",
+          "dispatch_nonce",
+          "attempt",
+          "run_id",
+          "run_attempt",
+          "head_sha",
+          "database_time"
+        ],
+        "title": "ActivationEvidenceReceipt",
+        "type": "object"
+      },
+      "ActivationEvidenceVerifyRequest": {
+        "additionalProperties": false,
+        "description": "Exact workflow run and reservation bound to one public attestation.",
+        "properties": {
+          "attempt": {
+            "enum": [
+              1,
+              2
+            ],
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "attestation": {
+            "$ref": "#/components/schemas/PublicActivationAttestation"
+          },
+          "attestation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Attestation Sha256",
+            "type": "string"
+          },
+          "dispatch_nonce": {
+            "format": "uuid",
+            "title": "Dispatch Nonce",
+            "type": "string"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "reservation_receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reservation Receipt Sha256",
+            "type": "string"
+          },
+          "run_attempt": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Attempt",
+            "type": "integer"
+          },
+          "run_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attestation",
+          "attestation_sha256",
+          "reservation_receipt_sha256",
+          "dispatch_nonce",
+          "attempt",
+          "run_id",
+          "run_attempt",
+          "head_sha"
+        ],
+        "title": "ActivationEvidenceVerifyRequest",
+        "type": "object"
+      },
       "AdminSessionResponse": {
         "description": "Opaque session material consumed only by the BFF server.",
         "properties": {
@@ -1833,6 +1977,154 @@
         "title": "PostPage",
         "type": "object"
       },
+      "PublicActivationAttestation": {
+        "additionalProperties": false,
+        "description": "Public, redacted evidence accepted by the activation boundary.",
+        "properties": {
+          "activation_nonce": {
+            "format": "uuid",
+            "title": "Activation Nonce",
+            "type": "string"
+          },
+          "attestation_generation": {
+            "minimum": 1.0,
+            "title": "Attestation Generation",
+            "type": "integer"
+          },
+          "authorization_evidence_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Authorization Evidence Sha256",
+            "type": "string"
+          },
+          "captured_at": {
+            "format": "date-time",
+            "title": "Captured At",
+            "type": "string"
+          },
+          "evidence_database_time": {
+            "format": "date-time",
+            "title": "Evidence Database Time",
+            "type": "string"
+          },
+          "free_tier_evidence_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Free Tier Evidence Sha256",
+            "type": "string"
+          },
+          "predecessor_attestation_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predecessor Attestation Sha256"
+          },
+          "provenance_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Provenance Sha256",
+            "type": "string"
+          },
+          "public_evidence_urls": {
+            "items": {
+              "format": "uri",
+              "maxLength": 2083,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Public Evidence Urls",
+            "type": "array"
+          },
+          "reviewed_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Reviewed Sha",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "source_scope_version": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Source Scope Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "reviewed_sha",
+          "activation_nonce",
+          "attestation_generation",
+          "source_scope_version",
+          "authorization_evidence_sha256",
+          "free_tier_evidence_sha256",
+          "provenance_sha256",
+          "captured_at",
+          "evidence_database_time",
+          "public_evidence_urls"
+        ],
+        "title": "PublicActivationAttestation",
+        "type": "object"
+      },
+      "ReceiptDatabaseTimestamps": {
+        "additionalProperties": false,
+        "description": "Database-owned timestamps carried by a release chain node.",
+        "properties": {
+          "claimed_at_db": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed At Db"
+          },
+          "created_at_db": {
+            "format": "date-time",
+            "title": "Created At Db",
+            "type": "string"
+          },
+          "reserved_at_db": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reserved At Db"
+          },
+          "selection_floor_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selection Floor At"
+          }
+        },
+        "required": [
+          "created_at_db"
+        ],
+        "title": "ReceiptDatabaseTimestamps",
+        "type": "object"
+      },
       "ReportItem": {
         "additionalProperties": false,
         "description": "Latest immutable report revision without binary persistence payloads.",
@@ -2140,6 +2432,7 @@
           "collector:complete",
           "verify:read",
           "verify:write",
+          "release:activation_evidence_verify",
           "worker:lease",
           "worker:heartbeat",
           "worker:ack"
@@ -2625,7 +2918,8 @@
           "reddit",
           "dcinside",
           "toss_securities",
-          "naver_finance"
+          "naver_finance",
+          "manifold"
         ],
         "title": "SourcePlatform",
         "type": "string"
@@ -2722,7 +3016,8 @@
         "enum": [
           "source_exhausted",
           "reviewed_page_cap",
-          "reviewed_post_cap"
+          "reviewed_post_cap",
+          "reviewed_byte_cap"
         ],
         "title": "TerminalReason",
         "type": "string"
@@ -3410,6 +3705,283 @@
         "title": "WorkerLeaseRequest",
         "type": "object"
       },
+      "WorkflowDispatchClaimReceipt": {
+        "additionalProperties": false,
+        "description": "Canonical public evidence returned after the atomic database claim.",
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "activation_nonce": {
+            "format": "uuid",
+            "title": "Activation Nonce",
+            "type": "string"
+          },
+          "approval_launch_sha256s": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            ],
+            "title": "Approval Launch Sha256S",
+            "type": "array"
+          },
+          "approval_round_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approval Round Id",
+            "type": "string"
+          },
+          "approved_plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approved Plan Sha256",
+            "type": "string"
+          },
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "command": {
+            "const": "workflow-dispatch-claim",
+            "title": "Command",
+            "type": "string"
+          },
+          "database_timestamps": {
+            "$ref": "#/components/schemas/ReceiptDatabaseTimestamps"
+          },
+          "dispatch_nonce": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatch Nonce"
+          },
+          "display_title": {
+            "title": "Display Title",
+            "type": "string"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "event": {
+            "const": "workflow_dispatch",
+            "title": "Event",
+            "type": "string"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "predecessor_receipt_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Predecessor Receipt Sha256"
+          },
+          "receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Receipt Sha256",
+            "type": "string"
+          },
+          "ref": {
+            "const": "refs/heads/main",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repository": {
+            "title": "Repository",
+            "type": "string"
+          },
+          "reservation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reservation Sha256",
+            "type": "string"
+          },
+          "retry_permitted": {
+            "title": "Retry Permitted",
+            "type": "boolean"
+          },
+          "reviewed_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Reviewed Sha",
+            "type": "string"
+          },
+          "run_attempt": {
+            "title": "Run Attempt",
+            "type": "integer"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "schema": {
+            "const": "release-chain-receipt.v1",
+            "title": "Schema",
+            "type": "string"
+          },
+          "terminal_for_attempt": {
+            "title": "Terminal For Attempt",
+            "type": "boolean"
+          },
+          "workflow": {
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "command",
+          "reviewed_sha",
+          "approved_plan_sha256",
+          "approval_round_id",
+          "approval_launch_sha256s",
+          "activation_nonce",
+          "dispatch_nonce",
+          "attempt",
+          "database_timestamps",
+          "accepted",
+          "terminal_for_attempt",
+          "retry_permitted",
+          "predecessor_receipt_sha256",
+          "receipt_sha256",
+          "repository",
+          "workflow",
+          "display_title",
+          "head_sha",
+          "reservation_sha256",
+          "run_id",
+          "run_attempt",
+          "event",
+          "ref",
+          "environment"
+        ],
+        "title": "WorkflowDispatchClaimReceipt",
+        "type": "object"
+      },
+      "WorkflowDispatchClaimRequest": {
+        "additionalProperties": false,
+        "description": "Every public value required to claim one exact durable reservation.",
+        "properties": {
+          "activation_nonce": {
+            "format": "uuid",
+            "title": "Activation Nonce",
+            "type": "string"
+          },
+          "approved_plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approved Plan Sha256",
+            "type": "string"
+          },
+          "dispatch_nonce": {
+            "format": "uuid",
+            "title": "Dispatch Nonce",
+            "type": "string"
+          },
+          "display_title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Display Title",
+            "type": "string"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "event": {
+            "const": "workflow_dispatch",
+            "title": "Event",
+            "type": "string"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "ref": {
+            "const": "refs/heads/main",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repository": {
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            "title": "Repository",
+            "type": "string"
+          },
+          "reservation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reservation Sha256",
+            "type": "string"
+          },
+          "run_attempt": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Attempt",
+            "type": "integer"
+          },
+          "run_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "workflow": {
+            "pattern": "^[A-Za-z0-9_.-]+\\.ya?ml$",
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "workflow",
+          "display_title",
+          "head_sha",
+          "approved_plan_sha256",
+          "activation_nonce",
+          "dispatch_nonce",
+          "reservation_sha256",
+          "run_id",
+          "run_attempt",
+          "event",
+          "ref"
+        ],
+        "title": "WorkflowDispatchClaimRequest",
+        "type": "object"
+      },
       "_CollectionRetryPayload": {
         "additionalProperties": false,
         "properties": {
@@ -3513,6 +4085,124 @@
         "summary": "Daily",
         "tags": [
           "cron"
+        ]
+      }
+    },
+    "/internal/release/activation-evidence-verify": {
+      "post": {
+        "operationId": "verify_internal_release_activation_evidence_verify_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationEvidenceVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivationEvidenceReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify",
+        "tags": [
+          "release"
+        ]
+      }
+    },
+    "/internal/release/workflow-dispatch-claim": {
+      "post": {
+        "operationId": "claim_internal_release_workflow_dispatch_claim_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowDispatchClaimRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowDispatchClaimReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Claim",
+        "tags": [
+          "release"
         ]
       }
     },
@@ -4660,6 +5350,22 @@
           },
           {
             "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
             "name": "published_from",
             "required": false,
             "schema": {
@@ -4813,6 +5519,22 @@
                 }
               ],
               "title": "Keyword"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
             }
           },
           {

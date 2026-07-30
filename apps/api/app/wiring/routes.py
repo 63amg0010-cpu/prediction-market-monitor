@@ -7,6 +7,10 @@ from typing import TYPE_CHECKING
 
 from pydantic import SecretStr
 
+from app.api.routes.activation_evidence import (
+    UnavailableActivationEvidenceVerifier,
+    create_activation_evidence_router,
+)
 from app.api.routes.auth import create_auth_router
 from app.api.routes.collector import create_collector_router
 from app.api.routes.commands import create_commands_router
@@ -18,6 +22,10 @@ from app.api.routes.reports import create_reports_router
 from app.api.routes.service_tokens import create_service_token_router
 from app.api.routes.verification import create_verification_router
 from app.api.routes.worker import create_worker_router
+from app.api.routes.workflow_dispatch_claim import (
+    UnavailableWorkflowDispatchClaimer,
+    create_workflow_dispatch_claim_router,
+)
 from app.services.dashboard.sql_health import SqlAlchemyHealthProbe
 from app.services.dashboard.sql_reader import SqlAlchemyDashboardReader
 from app.services.identity.cron import CronCredentialVerifier
@@ -81,6 +89,18 @@ def include_application_routes(
     )
 
     application.include_router(create_health_router(health_probe, version=version))
+    application.include_router(
+        create_activation_evidence_router(
+            dependencies.activation_evidence_verifier
+            or UnavailableActivationEvidenceVerifier()
+        )
+    )
+    application.include_router(
+        create_workflow_dispatch_claim_router(
+            dependencies.workflow_dispatch_claimer
+            or UnavailableWorkflowDispatchClaimer()
+        )
+    )
     application.include_router(create_auth_router(auth_handler))
     application.include_router(create_service_token_router(service_token_handler))
     application.include_router(

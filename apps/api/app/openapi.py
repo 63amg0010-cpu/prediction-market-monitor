@@ -34,3 +34,11 @@ def write_openapi_json(app: FastAPI, target: Path) -> bytes:
 
 
 __all__ = ["write_openapi", "write_openapi_json"]
+
+
+if __name__ == "__main__":
+    from pathlib import Path
+
+    from app.main import app
+
+    _ = write_openapi(app, Path(__file__).parents[1] / "openapi.json")

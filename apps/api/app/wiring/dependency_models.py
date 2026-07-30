@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from app.api.routes.activation_evidence import ActivationEvidenceVerifier
     from app.api.routes.auth import AdminAuthHandler
     from app.api.routes.commands import AdminCommandHandler, AdminMutationAuthorizer
     from app.api.routes.cron import DailyCronHandler
     from app.api.routes.health import DatabaseHealthProbe
     from app.api.routes.verification import VerificationHandler
     from app.api.routes.worker import WorkerHandler
+    from app.api.routes.workflow_dispatch_claim import WorkflowDispatchClaimer
     from app.collection.repository import CollectionRepository
     from app.core.settings import IdentitySettings
     from app.db.session import DatabaseSessions
@@ -38,6 +40,8 @@ class AppDependencies:
     cron_verifier: CronCredentialVerifier | None = None
     daily_cron_handler: DailyCronHandler | None = None
     health_probe: DatabaseHealthProbe | None = None
+    activation_evidence_verifier: ActivationEvidenceVerifier | None = None
+    workflow_dispatch_claimer: WorkflowDispatchClaimer | None = None
 
 
 __all__ = ("AppDependencies",)

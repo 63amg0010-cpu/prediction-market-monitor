@@ -4,11 +4,11 @@
 
 ## 현재 구현 및 운영 상태
 
-로컬 코드와 계약 테스트는 Phase 0–4 범위까지 구현되었고, Phase 5의 설정·운영 문서·자동 테스트·정적/시각 검증이 완료되었습니다. 이 완료 표시는 로컬 및 계약 수준의 결과이며, 실제 수집 글·분석 결과·대시보드 지표나 Production 승인을 의미하지 않습니다. 자세한 검증 결과는 [Phase 5 evidence summary](docs/evidence/deployment-validation/summary.md)를 참고하세요.
+로컬 코드와 계약 테스트는 Phase 0–5 범위와 검색 가능한 Manifold 호환/활성화 경계를 포함합니다. 현재 Alembic 단일 head는 `20260727_0011`이지만, 이 migration은 Manifold를 준비된 비활성·미연결 상태로만 만듭니다. 실제 Production 활성화나 30일 완료를 의미하지 않습니다. 이전 Phase 5 검증 결과는 [Phase 5 evidence summary](docs/evidence/deployment-validation/summary.md)를 참고하세요.
 
 - 수집원 어댑터는 공식 승인·약관·한도 증거가 없으면 `enabled: false`와 fail-closed 상태를 유지합니다.
 - Windows Codex 분석 작업자는 capability proof가 실패한 현재 `blocked_capability` 상태이며, 승인된 sandbox 증명 없이는 실행하지 않습니다.
-- 다음은 외부 증거가 필요한 **HOLD**입니다: live Docker·Supabase·Vercel 및 로그인→대시보드 핵심 경로, 30일 freshness(정확히 collection 240 슬롯 / verifier 2,880 슬롯), N400 인간 라벨 벤치마크, PC-off recovery(PC 전원 종료 후 복구). 자격 증명·실행 환경·실제 운영 기록이 없으므로 완료로 표시하지 않습니다.
+- 다음은 외부 증거가 필요한 **HOLD**입니다: live Docker·Supabase·Vercel 및 로그인→대시보드 핵심 경로, Manifold의 단계형 Production 활성화, 30일 freshness(정확히 workflow-level collection 240 슬롯 / verifier 2,880 슬롯), N400 인간 라벨 벤치마크, PC-off recovery(PC 전원 종료 후 복구). Day-zero smoke나 수동 실행은 30일 증거로 계산하지 않습니다.
 
 ## Phase 5 문서와 Windows 검증
 
@@ -18,6 +18,7 @@
 - [Cloud deployment handoff](docs/cloud-deployment-handoff.md): GitHub·Supabase·Vercel 배포 절차와 외부 HOLD 조건
 - [현재 API 라우트와 fail-closed 계약](docs/api-contract.md)
 - [소스 승인/차단 기준](docs/source-compliance.md)
+- [Manifold 단계형 배포·활성화·rollback 계약](docs/manifold-release-operations.md)
 - [무료 한도 운영 정책](docs/free-tier-operations.md)
 - [장애와 차단 상태 대응](docs/runbook.md)
 - [30일/180일 보관과 재현 규칙](docs/data-retention.md)
@@ -27,6 +28,13 @@ PowerShell 검증 스크립트는 기본적으로 dry-run입니다. 실제 검�
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\Verify-LocalSetup.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\Verify-LocalSetup.ps1 -RunChecks
+```
+
+검색/Manifold release gate는 위 일반 설정 검사와 별개입니다. `MIGRATION_QA_ADMIN_DATABASE_URL`과 `MIGRATION_QA_DATABASE_URL`은 loopback 또는 커밋된 테스트 컨테이너의 정확한 `monitor_migration_qa` DB만 가리켜야 합니다. 다음 두 명령은 순서대로 실행하며, 각각 DB를 새로 만들어 `20260726_0009 -> 20260727_0011`을 검증한 뒤 성공·실패와 관계없이 폐기합니다. `<attemptDir>`, `$BASE_SHA`, `$REVIEWED_SHA`는 문서 표기이므로 실제 검토된 값으로 바꿉니다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-fresh-search.ps1 -AttemptDir "<attemptDir>\task-11-pwsh" -DatabaseAdminUrlEnv MIGRATION_QA_ADMIN_DATABASE_URL -DatabaseUrlEnv MIGRATION_QA_DATABASE_URL -BaseSha "$BASE_SHA" -ReviewedSha "$REVIEWED_SHA"
+& "C:\Program Files\Git\bin\bash.exe" ./scripts/verify-fresh-search.sh --attempt-dir "<attemptDir>/task-11-git-bash" --database-admin-url-env MIGRATION_QA_ADMIN_DATABASE_URL --database-url-env MIGRATION_QA_DATABASE_URL --base-sha "$BASE_SHA" --reviewed-sha "$REVIEWED_SHA"
 ```
 
 ## 준비물
@@ -81,7 +89,7 @@ docker compose ps
 $dotenv = Get-Content .env | Where-Object { $_ -match "^[^#][^=]+=" }
 foreach ($line in $dotenv) { $name, $value = $line.Split("=", 2); Set-Item -Path "Env:$name" -Value $value }
 $env:PYTHONPATH = "apps/api"
-uv run --package monitor-api alembic -c apps/api/alembic.ini upgrade head
+uv run --package monitor-api alembic -c apps/api/alembic.ini upgrade 20260727_0011
 docker compose up api
 ```
 
@@ -116,7 +124,7 @@ uv run --all-packages basedpyright apps/api/app/main.py apps/api/app/openapi.py 
 - CORS 허용 출처는 기본값이 비어 있어 브라우저의 교차 출처 요청을 허용하지 않습니다.
 - 모든 응답에 `X-Correlation-ID`가 붙고, 인증 및 입력 오류는 typed envelope로 반환되며 비밀값을 반향하지 않습니다.
 - 기존 BFF·서비스 토큰 라우터는 등록되어 있지만, 저장소 어댑터가 주입되지 않은 상태에서는 임의 성공 대신 `503 service_unavailable`로 닫힙니다.
-- Reddit·디시인사이드·금융 커뮤니티는 약관·robots·승인 증거·무료 한도를 확인한 뒤에만 활성화합니다. 현재 검토된 설정에서는 출처가 모두 비활성입니다.
+- Reddit·디시인사이드·Manifold·금융 커뮤니티는 약관·robots·승인 증거·무료 한도를 확인한 뒤에만 활성화합니다. DCInside는 검토된 활성 source이고, Manifold는 `0011`만 적용된 상태에서는 계속 비활성입니다.
 - Windows Codex 작업자는 무도구·무네트워크·비밀값 제거 격리와 capability proof를 통과하기 전까지 실행하지 않습니다. PC가 켜져 있다고 해서 분석이 자동 완료된다고 표시하지 않습니다.
 
 문제를 신고할 때는 오류 본문의 `correlation_id`, 실행한 명령, `docker compose ps` 결과만 공유하세요. 비밀번호·토큰·원문·작성자 정보는 로그나 이슈에 붙이지 마세요.

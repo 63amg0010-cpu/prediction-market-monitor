@@ -1,0 +1,15 @@
+{
+  "schema": "release-gate.local-qa-db-guard.v1",
+  "environment": "test",
+  "expected_database": "monitor_migration_qa",
+  "allowed_hosts": [
+    "127.0.0.1",
+    "::1",
+    "localhost",
+    "db"
+  ],
+  "allowed_admin_databases": [
+    "postgres"
+  ],
+  "advisory_lock": "monitor_migration_qa_local_gate"
+}

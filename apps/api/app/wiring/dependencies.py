@@ -9,6 +9,14 @@ from urllib.parse import urlsplit
 
 from pydantic import SecretBytes, ValidationError
 
+from app.api.routes.activation_evidence import (
+    ActivationEvidenceOidcAuthorizer,
+    SqlActivationEvidenceVerifier,
+)
+from app.api.routes.workflow_dispatch_claim import (
+    SqlWorkflowDispatchClaimer,
+    WorkflowDispatchClaimOidcAuthorizer,
+)
 from app.collection.analysis_input_store import AnalysisQueueVersions
 from app.collection.completion_store import CompletionServiceConfig
 from app.collection.page_service_models import PageCommitServiceConfig
@@ -36,6 +44,8 @@ from app.services.dashboard.sql_reader import SqlAlchemyDashboardReader
 from app.services.identity.admin import AdminPasswordVerifier
 from app.services.identity.admin_handlers import SqlAdminHandlers
 from app.services.identity.cron import CronCredentialVerifier
+from app.services.identity.exchanges import SystemClock
+from app.services.identity.github_oidc import GitHubJwksOidcVerifier
 from app.services.identity.sql_admin_rate_limit import SqlLoginFailureRepository
 from app.services.identity.sql_admin_sessions import SqlAdminSessionStore
 
@@ -102,6 +112,30 @@ def dependencies_from_environment(
         ),
         daily_cron_handler=daily,
         health_probe=SqlAlchemyHealthProbe(sessions),
+        activation_evidence_verifier=(
+            None
+            if sessions is None or settings is None
+            else SqlActivationEvidenceVerifier(
+                sessions,
+                ActivationEvidenceOidcAuthorizer(
+                    verifier=GitHubJwksOidcVerifier(),
+                    clock=SystemClock(),
+                    repository=settings.github_repository,
+                ),
+            )
+        ),
+        workflow_dispatch_claimer=(
+            None
+            if sessions is None or settings is None
+            else SqlWorkflowDispatchClaimer(
+                sessions,
+                WorkflowDispatchClaimOidcAuthorizer(
+                    verifier=GitHubJwksOidcVerifier(),
+                    clock=SystemClock(),
+                    repository=settings.github_repository,
+                ),
+            )
+        ),
     )
 
 

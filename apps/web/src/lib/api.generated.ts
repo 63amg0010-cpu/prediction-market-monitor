@@ -25,6 +25,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/release/activation-evidence-verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify */
+        post: operations["verify_internal_release_activation_evidence_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/release/workflow-dispatch-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim */
+        post: operations["claim_internal_release_workflow_dispatch_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/daily-reconcile": {
         parameters: {
             query?: never;
@@ -581,6 +615,83 @@ export interface components {
          * @enum {string}
          */
         AckKind: "success" | "retryable_failure";
+        /**
+         * ActivationEvidenceReceipt
+         * @description Schema-closed public receipt returned by the read-only verifier.
+         */
+        ActivationEvidenceReceipt: {
+            /**
+             * Accepted
+             * @default true
+             * @constant
+             */
+            accepted: true;
+            /**
+             * Activation Nonce
+             * Format: uuid
+             */
+            activation_nonce: string;
+            /**
+             * Attempt
+             * @enum {integer}
+             */
+            attempt: 1 | 2;
+            /** Attestation Generation */
+            attestation_generation: number;
+            /** Attestation Sha256 */
+            attestation_sha256: string;
+            /**
+             * Database Time
+             * Format: date-time
+             */
+            database_time: string;
+            /**
+             * Dispatch Nonce
+             * Format: uuid
+             */
+            dispatch_nonce: string;
+            /** Head Sha */
+            head_sha: string;
+            /** Reservation Receipt Sha256 */
+            reservation_receipt_sha256: string;
+            /** Run Attempt */
+            run_attempt: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+        };
+        /**
+         * ActivationEvidenceVerifyRequest
+         * @description Exact workflow run and reservation bound to one public attestation.
+         */
+        ActivationEvidenceVerifyRequest: {
+            /**
+             * Attempt
+             * @enum {integer}
+             */
+            attempt: 1 | 2;
+            attestation: components["schemas"]["PublicActivationAttestation"];
+            /** Attestation Sha256 */
+            attestation_sha256: string;
+            /**
+             * Dispatch Nonce
+             * Format: uuid
+             */
+            dispatch_nonce: string;
+            /** Head Sha */
+            head_sha: string;
+            /** Reservation Receipt Sha256 */
+            reservation_receipt_sha256: string;
+            /** Run Attempt */
+            run_attempt: number;
+            /** Run Id */
+            run_id: number;
+        };
         /**
          * AdminSessionResponse
          * @description Opaque session material consumed only by the BFF server.
@@ -1303,6 +1414,65 @@ export interface components {
             page: components["schemas"]["PageInfo"];
         };
         /**
+         * PublicActivationAttestation
+         * @description Public, redacted evidence accepted by the activation boundary.
+         */
+        PublicActivationAttestation: {
+            /**
+             * Activation Nonce
+             * Format: uuid
+             */
+            activation_nonce: string;
+            /** Attestation Generation */
+            attestation_generation: number;
+            /** Authorization Evidence Sha256 */
+            authorization_evidence_sha256: string;
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /**
+             * Evidence Database Time
+             * Format: date-time
+             */
+            evidence_database_time: string;
+            /** Free Tier Evidence Sha256 */
+            free_tier_evidence_sha256: string;
+            /** Predecessor Attestation Sha256 */
+            predecessor_attestation_sha256?: string | null;
+            /** Provenance Sha256 */
+            provenance_sha256: string;
+            /** Public Evidence Urls */
+            public_evidence_urls: string[];
+            /** Reviewed Sha */
+            reviewed_sha: string;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: 1;
+            /** Source Scope Version */
+            source_scope_version: string;
+        };
+        /**
+         * ReceiptDatabaseTimestamps
+         * @description Database-owned timestamps carried by a release chain node.
+         */
+        ReceiptDatabaseTimestamps: {
+            /** Claimed At Db */
+            claimed_at_db?: string | null;
+            /**
+             * Created At Db
+             * Format: date-time
+             */
+            created_at_db: string;
+            /** Reserved At Db */
+            reserved_at_db?: string | null;
+            /** Selection Floor At */
+            selection_floor_at?: string | null;
+        };
+        /**
          * ReportItem
          * @description Latest immutable report revision without binary persistence payloads.
          */
@@ -1424,7 +1594,7 @@ export interface components {
          * @description Closed set of service-token capabilities.
          * @enum {string}
          */
-        Scope: "bff:auth" | "bff:read" | "admin:command" | "collector:materialize" | "collector:reserve" | "collector:claim" | "collector:page_commit" | "collector:heartbeat" | "collector:complete" | "verify:read" | "verify:write" | "worker:lease" | "worker:heartbeat" | "worker:ack";
+        Scope: "bff:auth" | "bff:read" | "admin:command" | "collector:materialize" | "collector:reserve" | "collector:claim" | "collector:page_commit" | "collector:heartbeat" | "collector:complete" | "verify:read" | "verify:write" | "release:activation_evidence_verify" | "worker:lease" | "worker:heartbeat" | "worker:ack";
         /**
          * Sentiment
          * @description Sentiment variants allowed for valid relevant analyses.
@@ -1590,7 +1760,7 @@ export interface components {
          * @description Reviewed source adapter identities.
          * @enum {string}
          */
-        SourcePlatform: "reddit" | "dcinside" | "toss_securities" | "naver_finance";
+        SourcePlatform: "reddit" | "dcinside" | "toss_securities" | "naver_finance" | "manifold";
         /**
          * SourceStatus
          * @description One reviewed source's latest collection and publication evidence.
@@ -1623,7 +1793,7 @@ export interface components {
          * @description Server-verifiable reasons that seal a page stream.
          * @enum {string}
          */
-        TerminalReason: "source_exhausted" | "reviewed_page_cap" | "reviewed_post_cap";
+        TerminalReason: "source_exhausted" | "reviewed_page_cap" | "reviewed_post_cap" | "reviewed_byte_cap";
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -1913,6 +2083,123 @@ export interface components {
             /** Capability Proof Id */
             capability_proof_id: string;
         };
+        /**
+         * WorkflowDispatchClaimReceipt
+         * @description Canonical public evidence returned after the atomic database claim.
+         */
+        WorkflowDispatchClaimReceipt: {
+            /** Accepted */
+            accepted: boolean;
+            /**
+             * Activation Nonce
+             * Format: uuid
+             */
+            activation_nonce: string;
+            /** Approval Launch Sha256S */
+            approval_launch_sha256s: [
+                string,
+                string
+            ];
+            /** Approval Round Id */
+            approval_round_id: string;
+            /** Approved Plan Sha256 */
+            approved_plan_sha256: string;
+            /** Attempt */
+            attempt: number;
+            /**
+             * Command
+             * @constant
+             */
+            command: "workflow-dispatch-claim";
+            database_timestamps: components["schemas"]["ReceiptDatabaseTimestamps"];
+            /** Dispatch Nonce */
+            dispatch_nonce: string | null;
+            /** Display Title */
+            display_title: string;
+            /** Environment */
+            environment: string | null;
+            /**
+             * Event
+             * @constant
+             */
+            event: "workflow_dispatch";
+            /** Head Sha */
+            head_sha: string;
+            /** Predecessor Receipt Sha256 */
+            predecessor_receipt_sha256: string | null;
+            /** Receipt Sha256 */
+            receipt_sha256: string;
+            /**
+             * Ref
+             * @constant
+             */
+            ref: "refs/heads/main";
+            /** Repository */
+            repository: string;
+            /** Reservation Sha256 */
+            reservation_sha256: string;
+            /** Retry Permitted */
+            retry_permitted: boolean;
+            /** Reviewed Sha */
+            reviewed_sha: string;
+            /** Run Attempt */
+            run_attempt: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Schema
+             * @constant
+             */
+            schema: "release-chain-receipt.v1";
+            /** Terminal For Attempt */
+            terminal_for_attempt: boolean;
+            /** Workflow */
+            workflow: string;
+        };
+        /**
+         * WorkflowDispatchClaimRequest
+         * @description Every public value required to claim one exact durable reservation.
+         */
+        WorkflowDispatchClaimRequest: {
+            /**
+             * Activation Nonce
+             * Format: uuid
+             */
+            activation_nonce: string;
+            /** Approved Plan Sha256 */
+            approved_plan_sha256: string;
+            /**
+             * Dispatch Nonce
+             * Format: uuid
+             */
+            dispatch_nonce: string;
+            /** Display Title */
+            display_title: string;
+            /** Environment */
+            environment?: string | null;
+            /**
+             * Event
+             * @constant
+             */
+            event: "workflow_dispatch";
+            /** Head Sha */
+            head_sha: string;
+            /**
+             * Ref
+             * @constant
+             */
+            ref: "refs/heads/main";
+            /** Repository */
+            repository: string;
+            /** Reservation Sha256 */
+            reservation_sha256: string;
+            /** Run Attempt */
+            run_attempt: number;
+            /** Run Id */
+            run_id: number;
+            /** Workflow */
+            workflow: string;
+        };
         /** _CollectionRetryPayload */
         _CollectionRetryPayload: {
             /** Reason */
@@ -1960,6 +2247,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DailyCronResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_internal_release_activation_evidence_verify_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivationEvidenceVerifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivationEvidenceReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_internal_release_workflow_dispatch_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowDispatchClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDispatchClaimReceipt"];
                 };
             };
             /** @description Validation Error */
@@ -2487,6 +2844,7 @@ export interface operations {
                 country?: components["schemas"]["Country"] | null;
                 source_id?: string | null;
                 keyword?: string | null;
+                search?: string | null;
                 published_from?: string | null;
                 published_to?: string | null;
             };
@@ -2544,6 +2902,7 @@ export interface operations {
                 country?: components["schemas"]["Country"] | null;
                 source_id?: string | null;
                 keyword?: string | null;
+                search?: string | null;
                 published_from?: string | null;
                 published_to?: string | null;
                 page?: number;

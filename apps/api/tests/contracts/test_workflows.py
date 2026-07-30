@@ -12,6 +12,7 @@ WORKFLOW_ADAPTER = TypeAdapter(dict[str, JsonValue])
 PINNED_ACTIONS = {
     "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
     "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
     "astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff",
 }
 
@@ -40,6 +41,16 @@ def _steps(job: dict[str, JsonValue]) -> list[JsonValue]:
 def _int(value: JsonValue) -> int:
     assert isinstance(value, int)
     return value
+
+
+def _named_steps(job: dict[str, JsonValue]) -> dict[str, dict[str, JsonValue]]:
+    return {
+        str(step["name"]): step
+        for value in _steps(job)
+        if isinstance(value, dict)
+        for step in (_mapping(value),)
+        if "name" in step
+    }
 
 
 def test_collect_workflow_uses_minute_17_oidc_bounded_cli() -> None:
@@ -123,47 +134,111 @@ def test_verifier_has_exact_independent_public_schedule_and_manual_private_gate(
     assert "BEARER_TOKEN" not in rendered
 
 
-def test_migration_workflow_is_manual_confirmed_and_environment_protected() -> None:
+def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> None:
     # Given: the only workflow allowed a migration database connection.
     workflow = _workflow("migrate.yml")
     triggers = _mapping(workflow["on"])
     job = _job(workflow, "migrate")
 
-    # When/Then: no schedule exists and explicit protected approval is required.
+    # When/Then: no schedule exists and the immutable dispatch contract is exact.
     assert set(triggers) == {"workflow_dispatch"}
     assert job["environment"] == "production-migration"
-    assert "confirm" in str(job["if"])
     assert job["timeout-minutes"] == 10
-    steps = _steps(job)
-    named_steps = {
-        str(step["name"]): step
-        for value in steps
-        if isinstance(value, dict)
-        for step in (_mapping(value),)
-        if "name" in step
+    assert workflow["run-name"] == (
+        "migrate-${{ inputs.operation }}-${{ inputs.revision }}-"
+        "${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}"
+    )
+    inputs = _mapping(_mapping(triggers["workflow_dispatch"])["inputs"])
+    assert set(inputs) == {
+        "operation",
+        "revision",
+        "attempt",
+        "expected_commit_sha",
+        "confirm",
+        "activation_nonce",
+        "dispatch_nonce",
+        "expected_plan_sha256",
+        "review_root_sha256",
+        "review_root_b64",
+        "no_spend_receipt_sha256",
+        "no_spend_receipt_b64",
+        "attempt1_failed_receipt_sha256",
+        "attempt1_failed_receipt_b64",
+        "attestation_run_id",
+        "attestation_generation",
+        "attestation_sha256",
+        "reservation_sha256",
     }
+    named_steps = _named_steps(job)
     dump_step = named_steps["Export pre-migration backup"]
-    restore_step = named_steps["Roll back failed migration from ephemeral backup"]
     assert _mapping(dump_step["env"])["PG_DUMP_DATABASE_URL"] == (
         "${{ secrets.PG_DUMP_DATABASE_URL }}"
-    )
-    assert _mapping(restore_step["env"])["PG_RESTORE_DATABASE_URL"] == (
-        "${{ secrets.PG_RESTORE_DATABASE_URL }}"
     )
     rendered = yaml.safe_dump(workflow)
     assert "MIGRATION_DATABASE_URL" in rendered
     assert "postgresql+asyncpg://" in rendered
     assert "PG_DUMP_DATABASE_URL" in rendered
-    assert "PG_RESTORE_DATABASE_URL" in rendered
     assert "postgresql://" in rendered
     assert "pg_dump --format=custom --no-owner --no-acl" in rendered
     assert '"$PG_DUMP_DATABASE_URL"' in rendered
-    assert "alembic -c apps/api/alembic.ini current" in rendered
-    assert "alembic -c apps/api/alembic.ini heads" in rendered
-    assert "alembic" in rendered
-    restore_command = str(restore_step["run"])
-    assert "pg_restore --clean --if-exists --no-owner --no-acl" in restore_command
-    assert '"$PG_RESTORE_DATABASE_URL"' in restore_command
+    validation_commands = "\n".join(
+        str(named_steps[name]["run"])
+        for name in (
+            "Validate immutable reviewed dispatch",
+            "Validate repository migration head",
+            "Validate safe starting revision",
+            "Verify failed operation remained at the safe revision",
+        )
+    )
+    assert "-m scripts.migration_dispatch_validator validate-dispatch" in (
+        validation_commands
+    )
+    assert "-m scripts.migration_dispatch_validator validate-heads" in (
+        validation_commands
+    )
+    assert "-m scripts.migration_dispatch_validator validate-current" in (
+        validation_commands
+    )
+    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA"' in rendered
+    assert 'test -z "$(git status --porcelain --untracked-files=no)"' in rendered
+    operation_command = str(named_steps["Apply exact reviewed migration"]["run"])
+    assert 'upgrade "$TARGET_REVISION"' in operation_command
+    assert 'downgrade "$TARGET_REVISION"' in operation_command
+    assert "upgrade head" not in rendered
+    assert "pg_restore" not in rendered
+    assert "PG_RESTORE_DATABASE_URL" not in rendered
+    assert "Roll back failed migration" not in named_steps
+    assert "Encrypt and decrypt-test pre-migration backup" in named_steps
+    assert "Upload encrypted recovery artifact" in named_steps
+    assert "Verify claimed durable reservation" in named_steps
+    attestation_command = str(
+        named_steps["Verify completed 0011 attestation run identity"]["run"]
+    )
+    assert "gh run download" in attestation_command
+    assert 'sha256sum "$attestation"' in attestation_command
+    assert '= "$ATTESTATION_SHA256"' in attestation_command
+    backup_command = str(
+        named_steps["Encrypt and decrypt-test pre-migration backup"]["run"]
+    )
+    assert "MIGRATION_BACKUP_AGE_RECIPIENT" in backup_command
+    assert "MIGRATION_BACKUP_AGE_IDENTITY" in backup_command
+    assert "--decrypt" in backup_command
+    failed_receipt_command = str(
+        named_steps["Emit canonical bootstrap failed-attempt receipt"]["run"]
+    )
+    assert "jq -cS -n" in failed_receipt_command
+    assert "terminal_for_attempt:true" in failed_receipt_command
+    assert "retry_permitted:true" in failed_receipt_command
+    assert all(
+        fragment in failed_receipt_command
+        for fragment in (
+            "to_regclass('public.release_roots') IS NOT NULL",
+            "platform::text='manifold'",
+            "ledger_exists:$ledger_exists",
+            "manifold_data_exists:$manifold_data_exists",
+        )
+    )
+    assert "Upload canonical bootstrap failed-attempt receipt" in named_steps
 
 
 def test_ci_workflow_builds_tests_and_deploys_vercel_artifacts() -> None:
@@ -240,9 +315,7 @@ def test_vercel_monorepo_deploys_from_repository_root_by_matrix_project() -> Non
         assert output_step["run"] == "test -d .vercel/output"
         assert output_step["if"] == "${{ matrix.app == 'web' }}"
         build_step = next(
-            step
-            for step in vercel_steps
-            if str(step["run"]).startswith("vercel build")
+            step for step in vercel_steps if str(step["run"]).startswith("vercel build")
         )
         assert build_step["if"] == "${{ matrix.app == 'web' }}"
         source_deploy_step = next(
@@ -277,6 +350,7 @@ def test_all_workflows_use_immutable_actions_and_exact_uv() -> None:
             "collect.yml",
             "verify.yml",
             "migrate.yml",
+            "activation-evidence.yml",
         )
     )
 

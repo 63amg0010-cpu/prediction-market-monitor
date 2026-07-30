@@ -3,8 +3,8 @@
 from collections.abc import Sequence
 
 from alembic import op
-from app.db.models import metadata
-from app.db.triggers import (
+from frozen_migration_snapshots.revision_0001 import metadata
+from frozen_migration_snapshots.revision_0001_triggers import (
     DROP_FUNCTION_DDL,
     DROP_TRIGGER_DDL,
     FUNCTION_DDL,

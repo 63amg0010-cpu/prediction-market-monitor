@@ -1,28 +1,140 @@
 name: migrate
+run-name: migrate-${{ inputs.operation }}-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
 
 on:
   workflow_dispatch:
     inputs:
-      confirm:
-        description: Type migrate-production to proceed
+      operation:
+        description: Exact migration operation
         required: true
+        type: string
+      revision:
+        description: Exact reviewed Alembic revision
+        required: true
+        type: string
+      attempt:
+        description: Immutable attempt number (1 or 2)
+        required: true
+        type: number
+      expected_commit_sha:
+        description: Full reviewed commit SHA
+        required: true
+        type: string
+      confirm:
+        description: Exact tuple-specific confirmation
+        required: true
+        type: string
+      activation_nonce:
+        description: Root activation UUID
+        required: true
+        type: string
+      dispatch_nonce:
+        description: Fresh workflow dispatch UUID
+        required: true
+        type: string
+      expected_plan_sha256:
+        description: Approved plan SHA-256
+        required: true
+        type: string
+      review_root_sha256:
+        description: Bootstrap review-root SHA-256 or empty
+        required: false
+        default: ""
+        type: string
+      review_root_b64:
+        description: Bootstrap public-safe canonical review root or empty
+        required: false
+        default: ""
+        type: string
+      no_spend_receipt_sha256:
+        description: Bootstrap no-spend receipt SHA-256 or empty
+        required: false
+        default: ""
+        type: string
+      no_spend_receipt_b64:
+        description: Bootstrap public-safe canonical no-spend receipt or empty
+        required: false
+        default: ""
+        type: string
+      attempt1_failed_receipt_sha256:
+        description: Attempt-1 failed receipt SHA-256 or empty
+        required: false
+        default: ""
+        type: string
+      attempt1_failed_receipt_b64:
+        description: Attempt-1 public-safe canonical failed receipt or empty
+        required: false
+        default: ""
+        type: string
+      attestation_run_id:
+        description: Completed attestation run ID for 0011 only
+        required: false
+        default: ""
+        type: string
+      attestation_generation:
+        description: Completed attestation generation for 0011 only
+        required: false
+        default: 0
+        type: number
+      attestation_sha256:
+        description: Completed attestation SHA-256 for 0011 only
+        required: false
+        default: ""
+        type: string
+      reservation_sha256:
+        description: Claimed durable reservation SHA-256; empty only for bootstrap
+        required: false
+        default: ""
         type: string
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
   migrate:
-    if: ${{ inputs.confirm == 'migrate-production' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: production-migration
+    env:
+      OPERATION: ${{ inputs.operation }}
+      REVISION: ${{ inputs.revision }}
+      ATTEMPT: ${{ inputs.attempt }}
+      EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+      CONFIRM: ${{ inputs.confirm }}
+      ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
+      DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+      EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+      REVIEW_ROOT_SHA256: ${{ inputs.review_root_sha256 }}
+      REVIEW_ROOT_B64: ${{ inputs.review_root_b64 }}
+      NO_SPEND_RECEIPT_SHA256: ${{ inputs.no_spend_receipt_sha256 }}
+      NO_SPEND_RECEIPT_B64: ${{ inputs.no_spend_receipt_b64 }}
+      ATTEMPT1_FAILED_RECEIPT_SHA256: ${{ inputs.attempt1_failed_receipt_sha256 }}
+      ATTEMPT1_FAILED_RECEIPT_B64: ${{ inputs.attempt1_failed_receipt_b64 }}
+      ATTESTATION_RUN_ID: ${{ inputs.attestation_run_id }}
+      ATTESTATION_GENERATION: ${{ inputs.attestation_generation }}
+      ATTESTATION_SHA256: ${{ inputs.attestation_sha256 }}
+      RESERVATION_SHA256: ${{ inputs.reservation_sha256 }}
+      GITHUB_EVENT_SHA: ${{ github.sha }}
+      PYTHONPATH: apps/api
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.expected_commit_sha }}
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
         with:
           version: "0.5.30"
       - run: uv sync --package monitor-api --locked
+      - name: Validate immutable reviewed dispatch
+        run: |
+          set -euo pipefail
+          test "$GITHUB_EVENT_SHA" = "$EXPECTED_COMMIT_SHA"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-dispatch
+        env:
+          DEFER_RESERVATION_CLAIM: "true"
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install --yes postgresql-client
       - name: Validate database URL drivers without disclosure
@@ -30,47 +142,213 @@ jobs:
         run: |
           case "$MIGRATION_DATABASE_URL" in
             postgresql+asyncpg://*) ;;
-            *) echo "MIGRATION_DATABASE_URL must use postgresql+asyncpg://" >&2; exit 1 ;;
+            *) echo "MIGRATION_DATABASE_URL has an invalid driver" >&2; exit 1 ;;
           esac
           case "$PG_DUMP_DATABASE_URL" in
             postgresql://*|postgres://*) ;;
-            *) echo "PG_DUMP_DATABASE_URL must use a native PostgreSQL scheme" >&2; exit 1 ;;
-          esac
-          case "$PG_RESTORE_DATABASE_URL" in
-            postgresql://*|postgres://*) ;;
-            *) echo "PG_RESTORE_DATABASE_URL must use a native PostgreSQL scheme" >&2; exit 1 ;;
+            *) echo "PG_DUMP_DATABASE_URL has an invalid driver" >&2; exit 1 ;;
           esac
         env:
           MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
           PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
-          PG_RESTORE_DATABASE_URL: ${{ secrets.PG_RESTORE_DATABASE_URL }}
+      - name: Validate repository migration head
+        run: |
+          set -euo pipefail
+          uv run --package monitor-api alembic -c apps/api/alembic.ini heads > "$RUNNER_TEMP/alembic-heads.txt"
+          HEADS_FILE="$RUNNER_TEMP/alembic-heads.txt" uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-heads
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Validate safe starting revision
+        run: |
+          set -euo pipefail
+          uv run --package monitor-api alembic -c apps/api/alembic.ini current > "$RUNNER_TEMP/alembic-current.txt"
+          CURRENT_FILE="$RUNNER_TEMP/alembic-current.txt" uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-current
+        env:
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Validate bootstrap ledger boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          ledger_absent="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align --command="SELECT to_regclass('public.release_roots') IS NULL")"
+          if [ "$OPERATION:$REVISION" = "upgrade:20260727_0010" ]; then
+            test "$ledger_absent" = "t"
+          else
+            test "$ledger_absent" = "f"
+          fi
+        env:
+          PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
+      - name: Verify completed 0011 attestation run identity
+        if: ${{ inputs.operation == 'upgrade' && inputs.revision == '20260727_0011' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 30s gh api \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "/repos/${GITHUB_REPOSITORY}/actions/runs/${ATTESTATION_RUN_ID}" \
+            > "$RUNNER_TEMP/attestation-run.json"
+          jq -e \
+            --arg sha "$EXPECTED_COMMIT_SHA" \
+            '.event == "workflow_dispatch" and .head_sha == $sha and .conclusion == "success" and .path == ".github/workflows/activation-evidence.yml"' \
+            "$RUNNER_TEMP/attestation-run.json" > /dev/null
+          mkdir "$RUNNER_TEMP/attestation"
+          artifact="activation-evidence-${ACTIVATION_NONCE}-generation-${ATTESTATION_GENERATION}-${DISPATCH_NONCE}-attempt-${ATTEMPT}"
+          timeout 30s gh run download "$ATTESTATION_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "$artifact" \
+            --dir "$RUNNER_TEMP/attestation"
+          attestation="$RUNNER_TEMP/attestation/activation-attestation-generation-${ATTESTATION_GENERATION}.json"
+          receipt="$RUNNER_TEMP/attestation/activation-evidence-public-receipt.json"
+          test -f "$attestation"
+          test -f "$receipt"
+          test "$(find "$RUNNER_TEMP/attestation" -type f | wc -l)" -eq 2
+          test "$(sha256sum "$attestation" | cut -d' ' -f1)" = "$ATTESTATION_SHA256"
+          jq -e \
+            --arg nonce "$ACTIVATION_NONCE" \
+            --argjson generation "$ATTESTATION_GENERATION" \
+            --arg dispatch "$DISPATCH_NONCE" \
+            --argjson attempt "$ATTEMPT" \
+            --arg sha "$ATTESTATION_SHA256" \
+            '.activation_nonce == $nonce and .attestation_generation == $generation and .dispatch_nonce == $dispatch and .attempt == $attempt and .attestation_sha256 == $sha' \
+            "$receipt" > /dev/null
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Verify claimed durable reservation
+        if: ${{ !(inputs.operation == 'upgrade' && inputs.revision == '20260727_0010') }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          claimed="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+            --set=activation_nonce="$ACTIVATION_NONCE" \
+            --set=dispatch_nonce="$DISPATCH_NONCE" \
+            --set=reservation_sha256="$RESERVATION_SHA256" \
+            --set=run_id="$GITHUB_RUN_ID" \
+            --command="SELECT count(*) = 1 FROM release_operation_reservations WHERE activation_nonce = :'activation_nonce'::uuid AND dispatch_nonce = :'dispatch_nonce'::uuid AND receipt_sha256 = :'reservation_sha256' AND claimed_run_id = :'run_id'::bigint")"
+          test "$claimed" = "t"
+          CLAIMED_RESERVATION_SHA256="$RESERVATION_SHA256" \
+            uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-dispatch
+        env:
+          PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
       - name: Export pre-migration backup
         run: pg_dump --format=custom --no-owner --no-acl --file="$RUNNER_TEMP/pre-migration.dump" "$PG_DUMP_DATABASE_URL"
         env:
           PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
-      - name: Check current migration revision
-        run: uv run --package monitor-api alembic -c apps/api/alembic.ini current
+      - name: Install pinned age release
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --output "$RUNNER_TEMP/age.tar.gz" \
+            "https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-amd64.tar.gz"
+          echo "bdc69c09cbdd6cf8b1f333d372a1f58247b3a33146406333e30c0f26e8f51377  $RUNNER_TEMP/age.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/age.tar.gz" -C "$RUNNER_TEMP"
+          test "$("$RUNNER_TEMP/age/age" --version)" = "v1.3.1"
+      - name: Encrypt and decrypt-test pre-migration backup
+        run: |
+          set -euo pipefail
+          plaintext_sha256="$(sha256sum "$RUNNER_TEMP/pre-migration.dump" | cut -d' ' -f1)"
+          "$RUNNER_TEMP/age/age" --recipient "$MIGRATION_BACKUP_AGE_RECIPIENT" \
+            --output "$RUNNER_TEMP/pre-migration.dump.age" "$RUNNER_TEMP/pre-migration.dump"
+          printf '%s\n' "$MIGRATION_BACKUP_AGE_IDENTITY" > "$RUNNER_TEMP/age-identity.txt"
+          "$RUNNER_TEMP/age/age" --decrypt --identity "$RUNNER_TEMP/age-identity.txt" \
+            "$RUNNER_TEMP/pre-migration.dump.age" |
+            sha256sum --check <(printf '%s  -\n' "$plaintext_sha256")
+          ciphertext_sha256="$(sha256sum "$RUNNER_TEMP/pre-migration.dump.age" | cut -d' ' -f1)"
+          printf '{"schema_version":1,"cipher":"age-v1.3.1","plaintext_sha256":"%s","ciphertext_sha256":"%s","decrypt_tested":true}\n' \
+            "$plaintext_sha256" "$ciphertext_sha256" > "$RUNNER_TEMP/backup-metadata.json"
+          rm -f "$RUNNER_TEMP/pre-migration.dump"
+          rm -f "$RUNNER_TEMP/age-identity.txt"
+        env:
+          MIGRATION_BACKUP_AGE_RECIPIENT: ${{ vars.MIGRATION_BACKUP_AGE_RECIPIENT }}
+          MIGRATION_BACKUP_AGE_IDENTITY: ${{ secrets.MIGRATION_BACKUP_AGE_IDENTITY }}
+      - name: Upload encrypted recovery artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migrate-backup-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          path: |
+            ${{ runner.temp }}/pre-migration.dump.age
+            ${{ runner.temp }}/backup-metadata.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Apply exact reviewed migration
+        id: migration
+        run: |
+          set -euo pipefail
+          TARGET_REVISION="$REVISION"
+          if [ "$OPERATION" = "upgrade" ]; then
+            uv run --package monitor-api alembic -c apps/api/alembic.ini upgrade "$TARGET_REVISION"
+          else
+            uv run --package monitor-api alembic -c apps/api/alembic.ini downgrade "$TARGET_REVISION"
+          fi
         env:
           DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-      - name: Check repository migration head
-        run: uv run --package monitor-api alembic -c apps/api/alembic.ini heads
+          MIGRATION_REVIEW_ROOT_B64: ${{ inputs.review_root_b64 }}
+          MIGRATION_NO_SPEND_RECEIPT_B64: ${{ inputs.no_spend_receipt_b64 }}
+          MIGRATION_FAILED_ATTEMPT_RECEIPT_B64: ${{ inputs.attempt1_failed_receipt_b64 }}
+          MIGRATION_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          MIGRATION_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+          MIGRATION_ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
+          MIGRATION_DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          MIGRATION_ATTEMPT: ${{ inputs.attempt }}
+          MIGRATION_ATTESTATION_RUN_ID: ${{ inputs.attestation_run_id }}
+          MIGRATION_ATTESTATION_PATH: ${{ runner.temp }}/attestation/activation-attestation-generation-${{ inputs.attestation_generation }}.json
+          MIGRATION_ATTESTATION_SHA256: ${{ inputs.attestation_sha256 }}
+      - name: Verify exact resulting revision
+        run: |
+          set -euo pipefail
+          uv run --package monitor-api alembic -c apps/api/alembic.ini current > "$RUNNER_TEMP/alembic-result.txt"
+          RESULT_FILE="$RUNNER_TEMP/alembic-result.txt" uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-result
         env:
           DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-      - name: Apply reviewed migrations
-        run: uv run --package monitor-api alembic -c apps/api/alembic.ini upgrade head
-        env:
-          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-      - name: Verify migrated revision
-        run: uv run --package monitor-api alembic -c apps/api/alembic.ini current
-        env:
-          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-      - name: Roll back failed migration from ephemeral backup
+      - name: Verify failed operation remained at the safe revision
         if: ${{ failure() }}
         run: |
-          if [ ! -s "$RUNNER_TEMP/pre-migration.dump" ]; then
-            echo "No pre-migration backup exists; automatic restore is unavailable." >&2
-            exit 1
-          fi
-          pg_restore --clean --if-exists --no-owner --no-acl --dbname "$PG_RESTORE_DATABASE_URL" "$RUNNER_TEMP/pre-migration.dump"
+          set -euo pipefail
+          uv run --package monitor-api alembic -c apps/api/alembic.ini current > "$RUNNER_TEMP/alembic-failed-current.txt"
+          CURRENT_FILE="$RUNNER_TEMP/alembic-failed-current.txt" uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-current
+          echo "Migration failed without automatic restore; incident HOLD is required." >&2
         env:
-          PG_RESTORE_DATABASE_URL: ${{ secrets.PG_RESTORE_DATABASE_URL }}
+          DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Emit canonical bootstrap failed-attempt receipt
+        if: ${{ steps.migration.outcome == 'failure' && inputs.operation == 'upgrade' && inputs.revision == '20260727_0010' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact_sha256="$(sha256sum "$RUNNER_TEMP/pre-migration.dump.age" | cut -d' ' -f1)"
+          enum_residue_raw="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+            --command="SELECT EXISTS (SELECT 1 FROM pg_enum e JOIN pg_type t ON t.oid=e.enumtypid WHERE t.typname='source_platform' AND e.enumlabel='manifold')")"
+          enum_residue=false
+          if [ "$enum_residue_raw" = "t" ]; then enum_residue=true; fi
+          ledger_exists_raw="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+            --command="SELECT to_regclass('public.release_roots') IS NOT NULL")"
+          ledger_exists=false
+          if [ "$ledger_exists_raw" = "t" ]; then ledger_exists=true; fi
+          manifold_data_raw="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+            --command="SELECT EXISTS (SELECT 1 FROM community_sources WHERE platform::text='manifold')")"
+          manifold_data_exists=false
+          if [ "$manifold_data_raw" = "t" ]; then manifold_data_exists=true; fi
+          test "$ledger_exists" = "false"
+          test "$manifold_data_exists" = "false"
+          jq -cS -n \
+            --arg reviewed_sha "$EXPECTED_COMMIT_SHA" \
+            --arg plan_sha "$EXPECTED_PLAN_SHA256" \
+            --arg activation_nonce "$ACTIVATION_NONCE" \
+            --arg dispatch_nonce "$DISPATCH_NONCE" \
+            --arg root_sha "$REVIEW_ROOT_SHA256" \
+            --arg no_spend_sha "$NO_SPEND_RECEIPT_SHA256" \
+            --arg artifact_sha "$artifact_sha256" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson enum_residue "$enum_residue" \
+            --argjson ledger_exists "$ledger_exists" \
+            --argjson manifold_data_exists "$manifold_data_exists" \
+            '{accepted:false,activation_nonce:$activation_nonce,approved_plan_sha256:$plan_sha,artifact_sha256:$artifact_sha,attempt:1,command:"migrate-0010-bootstrap",dispatch_nonce:$dispatch_nonce,enum_residue:$enum_residue,ledger_exists:$ledger_exists,manifold_data_exists:$manifold_data_exists,no_spend_receipt_sha256:$no_spend_sha,retry_permitted:true,review_root_sha256:$root_sha,reviewed_sha:$reviewed_sha,run_id:$run_id,schema_version:1,state_after:"20260726_0009",state_before:"20260726_0009",terminal_for_attempt:true}' \
+            > "$RUNNER_TEMP/failed-attempt-receipt.json"
+        env:
+          PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
+      - name: Upload canonical bootstrap failed-attempt receipt
+        if: ${{ steps.migration.outcome == 'failure' && inputs.operation == 'upgrade' && inputs.revision == '20260727_0010' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migrate-0010-bootstrap-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          path: ${{ runner.temp }}/failed-attempt-receipt.json
+          if-no-files-found: error
+          retention-days: 1

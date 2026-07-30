@@ -8,7 +8,22 @@ from app.db.models import metadata
 
 API_ROOT = Path(__file__).parents[2]
 ALEMBIC_INI = API_ROOT / "alembic.ini"
-EXPECTED_HEAD = "20260726_0009"
+EXPECTED_HEAD = "20260727_0011"
+RELEASE_COMPATIBILITY_TABLES = {
+    "release_roots",
+    "release_no_spend_receipts",
+    "release_operation_reservations",
+    "release_operation_receipts",
+    "release_receipt_chain",
+}
+CADENCE_0011_TABLES = {
+    "source_cadence_epochs",
+    "cadence_epoch_contracts",
+    "cadence_workflow_slots",
+    "cadence_workflow_attempts",
+    "cadence_attempt_source_receipts",
+}
+COMPATIBILITY_TABLES = RELEASE_COMPATIBILITY_TABLES | CADENCE_0011_TABLES
 
 
 def _alembic_config() -> tuple[Config, StringIO]:
@@ -51,6 +66,31 @@ def test_supabase_head_denies_data_api_access_and_hardens_functions() -> None:
     assert ddl.count("CREATE INDEX IF NOT EXISTS ix_") == 40
 
 
+def test_cadence_compatibility_exclusion_is_exactly_owned_by_0011() -> None:
+    # Given: cadence ORM metadata was added after the 0006 ACL rollback boundary.
+    config, output = _alembic_config()
+
+    # When: only the owning 0011 revision is rendered.
+    command.upgrade(config, "20260727_0010:20260727_0011", sql=True)
+    ddl = output.getvalue()
+    cadence_metadata = {
+        table_name
+        for table_name in metadata.tables
+        if table_name.startswith("cadence_")
+        or table_name == "source_cadence_epochs"
+    }
+
+    # Then: the exclusion is exact and every member is created/hardened by 0011.
+    assert cadence_metadata == CADENCE_0011_TABLES
+    for table_name in sorted(CADENCE_0011_TABLES):
+        assert f"CREATE TABLE IF NOT EXISTS {table_name}" in ddl
+        assert f"ALTER TABLE public.{table_name} ENABLE ROW LEVEL SECURITY" in ddl
+        assert (
+            f"REVOKE ALL PRIVILEGES ON TABLE public.{table_name} "
+            "FROM PUBLIC, anon, authenticated"
+        ) in ddl
+
+
 def test_downgrade_restores_exact_supabase_table_acl_without_public_grants() -> None:
     # Given: the hardening revision applied over Supabase's default table ACL.
     config, output = _alembic_config()
@@ -60,7 +100,10 @@ def test_downgrade_restores_exact_supabase_table_acl_without_public_grants() -> 
     ddl = output.getvalue()
 
     # Then: anon/authenticated regain arwdDxtm and PUBLIC remains unprivileged.
-    for table_name in (*sorted(metadata.tables), "alembic_version"):
+    for table_name in (
+        *sorted(set(metadata.tables).difference(COMPATIBILITY_TABLES)),
+        "alembic_version",
+    ):
         grant = (
             f"GRANT ALL PRIVILEGES ON TABLE public.{table_name} TO anon, authenticated"
         )

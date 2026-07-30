@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "command": "materialize-chain",
+  "manifest_name": "matrix-b-chain-manifest.json",
+  "incident_class": "technical",
+  "terminal_command": "matrix-b-health",
+  "reject_unselected_paths": true,
+  "steps": [
+    {
+      "name": "downgrade",
+      "commands": ["migrate-0011-to-0010", "recover-operation-receipt"],
+      "attempt_root": "matrix-b/downgrade",
+      "allowed_branches": ["accepted-attempt-1", "failed-attempt-1-accepted-attempt-2"]
+    },
+    {
+      "name": "binding-restore-verification",
+      "commands": ["binding-restore-verified"],
+      "attempt_root": "matrix-b/binding-restore",
+      "allowed_branches": ["accepted-attempt-1", "failed-attempt-1-accepted-attempt-2"]
+    },
+    {
+      "name": "api",
+      "commands": ["vercel-restore", "vercel-noop"],
+      "project_kind": "api",
+      "attempt_root": "vercel/matrix-b-rebuild/api",
+      "allowed_branches": ["accepted-attempt-1", "failed-attempt-1-accepted-attempt-2"]
+    },
+    {
+      "name": "web",
+      "commands": ["vercel-restore", "vercel-noop"],
+      "project_kind": "web",
+      "attempt_root": "vercel/matrix-b-rebuild/web",
+      "allowed_branches": ["accepted-attempt-1", "failed-attempt-1-accepted-attempt-2"]
+    },
+    {
+      "name": "aliases",
+      "commands": ["matrix-b-aliases"],
+      "attempt_root": "matrix-b/aliases",
+      "allowed_branches": ["accepted-attempt-1", "failed-attempt-1-accepted-attempt-2"]
+    },
+    {
+      "name": "health",
+      "commands": ["matrix-b-health"],
+      "attempt_root": "matrix-b/health",
+      "allowed_branches": ["accepted-attempt-1", "failed-attempt-1-accepted-attempt-2"]
+    }
+  ]
+}
