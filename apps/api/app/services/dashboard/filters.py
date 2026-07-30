@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime  # noqa: TC003 - Pydantic resolves at runtime.
-from typing import Annotated, ClassVar, Final, Self
+from typing import Annotated, ClassVar, Final, Literal, Self
+from unicodedata import normalize
 from uuid import UUID  # noqa: TC003 - Pydantic resolves this at runtime.
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 from pydantic_core import PydanticCustomError
 
 from app.domain.enums import (  # noqa: TC001 - Pydantic resolves these at runtime.
@@ -22,6 +31,60 @@ INCOMPLETE_PUBLISHED_WINDOW: Final = "incomplete_published_window"
 INVALID_PUBLISHED_WINDOW: Final = "invalid_published_window"
 INCOMPLETE_REPORT_RANGE: Final = "incomplete_report_range"
 INVALID_REPORT_RANGE: Final = "invalid_report_range"
+INVALID_SEARCH: Final = "invalid_search"
+_ASCII_EDGE_WHITESPACE: Final = "\t\n\v\f\r "
+_ASCII_UPPER: Final = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_ASCII_LOWER: Final = "abcdefghijklmnopqrstuvwxyz"
+_ASCII_FOLD_TABLE: Final = str.maketrans(_ASCII_UPPER, _ASCII_LOWER)
+_MIN_SEARCH_SCALARS: Final = 2
+_MAX_SEARCH_SCALARS: Final = 100
+_MIN_SURROGATE: Final = 0xD800
+_MAX_SURROGATE: Final = 0xDFFF
+_SCALAR_COUNT_REASON: Final = "scalar_count"
+_UNICODE_SCALAR_REASON: Final = "unicode_scalar"
+SearchFoldReason = Literal["scalar_count", "unicode_scalar"]
+
+
+@dataclass(frozen=True, slots=True)
+class SearchFoldResult:
+    """Canonical folded search text and its Unicode-scalar count."""
+
+    value: str
+    scalar_count: int
+
+
+class SearchFoldError(Exception):
+    """Stable invalid-search reason shared by boundary adapters."""
+
+    reason: SearchFoldReason
+
+    def __init__(self, reason: SearchFoldReason) -> None:
+        """Create an error without retaining rejected user text."""
+        self.reason = reason
+        super().__init__(reason)
+
+
+def search_fold_v1(value: str) -> SearchFoldResult:
+    """Apply the versioned locale-independent search validation fold."""
+    if any(
+        _MIN_SURROGATE <= ord(character) <= _MAX_SURROGATE for character in value
+    ):
+        raise SearchFoldError(_UNICODE_SCALAR_REASON)
+    folded = normalize("NFC", value.strip(_ASCII_EDGE_WHITESPACE)).translate(
+        _ASCII_FOLD_TABLE
+    )
+    scalar_count = len(folded)
+    if scalar_count < _MIN_SEARCH_SCALARS or scalar_count > _MAX_SEARCH_SCALARS:
+        raise SearchFoldError(_SCALAR_COUNT_REASON)
+    return SearchFoldResult(value=folded, scalar_count=scalar_count)
+
+
+def search_like_pattern_v1(folded_value: str) -> str:
+    """Escape a folded literal once for a bound PostgreSQL LIKE pattern."""
+    escaped = (
+        folded_value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    return f"%{escaped}%"
 
 
 class DashboardFilters(BaseModel):
@@ -32,8 +95,24 @@ class DashboardFilters(BaseModel):
     country: Country | None = None
     source_id: UUID | None = None
     keyword: Keyword | None = None
+    search: str | None = None
     published_from: datetime | None = None
     published_to: datetime | None = None
+
+    @field_validator("search", mode="before")
+    @classmethod
+    def parse_search(cls, value: str | None) -> str | None:
+        """Parse raw API search text into the canonical internal value."""
+        if value is None:
+            return None
+        try:
+            return search_fold_v1(value).value
+        except SearchFoldError as exc:
+            raise PydanticCustomError(
+                INVALID_SEARCH,
+                "search must contain 2 to 100 Unicode scalar values",
+                {"reason": exc.reason},
+            ) from exc
 
     @model_validator(mode="after")
     def require_complete_aware_window(self) -> Self:

@@ -1,0 +1,111 @@
+{
+  "version": "search_fold_v1",
+  "valid_vectors": [
+    {
+      "name": "ascii_edge_trim_and_fold",
+      "input": "\t MARKET \r\n",
+      "folded_value": "market",
+      "scalar_count": 6,
+      "server_like_pattern": "%market%"
+    },
+    {
+      "name": "decomposed_nfc",
+      "input": "Café",
+      "folded_value": "café",
+      "scalar_count": 4,
+      "server_like_pattern": "%café%"
+    },
+    {
+      "name": "composed_nfc",
+      "input": "Café",
+      "folded_value": "café",
+      "scalar_count": 4,
+      "server_like_pattern": "%café%"
+    },
+    {
+      "name": "korean_literal",
+      "input": " 예측시장 ",
+      "folded_value": "예측시장",
+      "scalar_count": 4,
+      "server_like_pattern": "%예측시장%"
+    },
+    {
+      "name": "astral_scalar",
+      "input": "A😀",
+      "folded_value": "a😀",
+      "scalar_count": 2,
+      "server_like_pattern": "%a😀%"
+    },
+    {
+      "name": "non_ascii_uppercase_literal",
+      "input": "ÉTÉ",
+      "folded_value": "ÉtÉ",
+      "scalar_count": 3,
+      "server_like_pattern": "%ÉtÉ%"
+    },
+    {
+      "name": "non_ascii_lowercase_literal",
+      "input": "été",
+      "folded_value": "été",
+      "scalar_count": 3,
+      "server_like_pattern": "%été%"
+    },
+    {
+      "name": "wildcards_are_literal",
+      "input": "Market_100%",
+      "folded_value": "market_100%",
+      "scalar_count": 11,
+      "server_like_pattern": "%market\\_100\\%%"
+    },
+    {
+      "name": "backslash_escaped_first",
+      "input": "A\\B_%",
+      "folded_value": "a\\b_%",
+      "scalar_count": 5,
+      "server_like_pattern": "%a\\\\b\\_\\%%"
+    },
+    {
+      "name": "minimum_two_scalars",
+      "input": "😀a",
+      "folded_value": "😀a",
+      "scalar_count": 2,
+      "server_like_pattern": "%😀a%"
+    },
+    {
+      "name": "maximum_one_hundred_scalars",
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+      "folded_value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+      "scalar_count": 100,
+      "server_like_pattern": "%aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀%"
+    }
+  ],
+  "invalid_inputs": [
+    {
+      "name": "blank_after_ascii_edge_trim",
+      "input": "\t \r\n",
+      "reason": "scalar_count"
+    },
+    {
+      "name": "one_scalar",
+      "input": "😀",
+      "reason": "scalar_count"
+    },
+    {
+      "name": "one_hundred_one_scalars",
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa😀",
+      "reason": "scalar_count"
+    },
+    {
+      "name": "unpaired_high_surrogate",
+      "input": "unpaired high surrogate followed by x",
+      "utf16_code_units": [55296, 120],
+      "reason": "unicode_scalar"
+    },
+    {
+      "name": "unpaired_low_surrogate",
+      "input": "x followed by unpaired low surrogate",
+      "utf16_code_units": [120, 57343],
+      "reason": "unicode_scalar"
+    }
+  ]
+}
