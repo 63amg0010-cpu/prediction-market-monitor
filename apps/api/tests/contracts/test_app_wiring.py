@@ -42,6 +42,7 @@ REQUIRED_OPERATIONS = frozenset(
         ("POST", "/v1/auth/login"),
         ("POST", "/v1/auth/logout"),
         ("POST", "/internal/release/activation-evidence-verify"),
+        ("POST", "/internal/release/cadence-workflow-attempt"),
         ("POST", "/internal/release/workflow-dispatch-claim"),
         ("POST", "/v1/collector/commands/{command_id}/claim"),
         ("POST", "/v1/collector/commands/{command_id}/complete"),
@@ -67,7 +68,13 @@ HTTP_METHODS: Final = frozenset({"delete", "get", "patch", "post", "put"})
 class _OpenApiDocument(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True)
 
+    components: dict[str, dict[str, JsonValue]]
     paths: dict[str, dict[str, JsonValue]]
+
+
+def _mapping(value: JsonValue) -> dict[str, JsonValue]:
+    assert isinstance(value, dict)
+    return value
 
 
 def _api_operations(
@@ -104,6 +111,44 @@ def test_deployed_app_registers_every_required_operation_once(
     # Then
     assert set(operations) == REQUIRED_OPERATIONS
     assert len(operations) == len(set(operations))
+
+
+def test_cadence_workflow_operation_is_named_and_schema_closed(
+    tmp_path: Path,
+) -> None:
+    # Given
+    openapi_target = tmp_path / "openapi.json"
+    document = _OpenApiDocument.model_validate_json(
+        write_openapi(deployed_application, openapi_target)
+    )
+
+    # When
+    operation = _mapping(
+        document.paths["/internal/release/cadence-workflow-attempt"]["post"]
+    )
+    request_body = _mapping(operation["requestBody"])
+    request_content = _mapping(request_body["content"])
+    request_media = _mapping(request_content["application/json"])
+    response = _mapping(_mapping(operation["responses"])["200"])
+    response_content = _mapping(response["content"])
+    response_media = _mapping(response_content["application/json"])
+    schemas = document.components["schemas"]
+    request_schema = _mapping(schemas["CadenceWorkflowAttemptRequest"])
+    receipt_schema = _mapping(schemas["CadenceWorkflowAttemptReceipt"])
+
+    # Then
+    assert (
+        operation["operationId"]
+        == "record_internal_release_cadence_workflow_attempt_post"
+    )
+    assert request_media["schema"] == {
+        "$ref": "#/components/schemas/CadenceWorkflowAttemptRequest"
+    }
+    assert response_media["schema"] == {
+        "$ref": "#/components/schemas/CadenceWorkflowAttemptReceipt"
+    }
+    assert request_schema["additionalProperties"] is False
+    assert receipt_schema["additionalProperties"] is False
 
 
 def test_collector_preserves_unauthorized_status_instead_of_404() -> None:
