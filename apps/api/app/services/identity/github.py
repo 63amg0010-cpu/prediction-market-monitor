@@ -30,7 +30,8 @@ class GitHubOIDCClaims(BaseModel):
     repository: str
     job_workflow_ref: str
     git_ref: str = Field(alias="ref")
-    environment: str
+    head_sha: str = Field(alias="sha", pattern=r"^[0-9a-f]{40}$")
+    environment: str | None = None
     run_id: str
     run_attempt: str
     jwt_id: str = Field(alias="jti")

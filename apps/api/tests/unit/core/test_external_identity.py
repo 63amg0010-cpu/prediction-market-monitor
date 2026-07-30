@@ -32,6 +32,7 @@ def _github_claims() -> GitHubOIDCClaims:
                 "owner/monitor/.github/workflows/collect.yml@refs/heads/main"
             ),
             "ref": "refs/heads/main",
+            "sha": "a" * 40,
             "environment": "production",
             "run_id": "12345",
             "run_attempt": "1",

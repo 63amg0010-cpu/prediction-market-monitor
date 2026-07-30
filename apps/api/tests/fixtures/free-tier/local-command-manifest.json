@@ -1,0 +1,11 @@
+{
+  "schema": "free-tier.local-command-manifest.v1",
+  "fixture_rows": 4800,
+  "fixture_title_body_utf8_bytes": 62914560,
+  "page_request_equivalent": 10000,
+  "instrumented_calls": [
+    "api-health",
+    "web-health",
+    "database-search-fixture"
+  ]
+}

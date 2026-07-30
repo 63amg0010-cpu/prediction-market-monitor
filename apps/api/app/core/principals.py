@@ -36,6 +36,7 @@ class Scope(StrEnum):
     COLLECTOR_COMPLETE = "collector:complete"
     VERIFY_READ = "verify:read"
     VERIFY_WRITE = "verify:write"
+    RELEASE_ACTIVATION_EVIDENCE_VERIFY = "release:activation_evidence_verify"
     WORKER_LEASE = "worker:lease"
     WORKER_HEARTBEAT = "worker:heartbeat"
     WORKER_ACK = "worker:ack"

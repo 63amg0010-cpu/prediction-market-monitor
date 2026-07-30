@@ -37,6 +37,7 @@ def _claims() -> dict[str, JsonValue]:
             "owner/monitor/.github/workflows/collect.yml@refs/heads/main"
         ),
         "ref": "refs/heads/main",
+        "sha": "a" * 40,
         "environment": "production",
         "run_id": "1234",
         "run_attempt": "1",
@@ -103,4 +104,28 @@ async def test_github_oidc_verifier_rejects_a_signature_from_another_key() -> No
     # When/Then: signature mismatch is a redacted OIDC claim rejection.
     with pytest.raises(IdentityError) as captured:
         _ = await verifier.verify(SecretStr(_token(attacker)), NOW)
+    assert captured.value.code is IdentityErrorCode.INVALID_OIDC_CLAIMS
+
+
+@pytest.mark.parametrize(
+    "token",
+    [
+        "not-a-compact-jwt",
+        "only.two",
+        "too.many.jwt.segments",
+        "***.***.***",
+    ],
+)
+@pytest.mark.asyncio
+async def test_github_oidc_verifier_rejects_malformed_compact_jwt(
+    token: str,
+) -> None:
+    # Given: malformed compact input and a transport that must never be reached.
+    verifier = GitHubJwksOidcVerifier(
+        httpx2.MockTransport(lambda _: pytest.fail("JWKS network was reached"))
+    )
+
+    # When/Then: parsing fails closed before any key lookup.
+    with pytest.raises(IdentityError) as captured:
+        _ = await verifier.verify(SecretStr(token), NOW)
     assert captured.value.code is IdentityErrorCode.INVALID_OIDC_CLAIMS
