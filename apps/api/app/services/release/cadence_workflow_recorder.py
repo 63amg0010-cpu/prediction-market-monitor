@@ -147,7 +147,12 @@ async def _insert(
     for source in payload.source_results:
         _ = await session.execute(
             INSERT_SOURCE,
-            {"attempt_id": attempt_id, **source.model_dump(mode="python")},
+            {
+                "attempt_id": attempt_id,
+                "source_id": source.source_id,
+                "succeeded": source.status == "succeeded",
+                "receipt_sha256": source.receipt_sha256,
+            },
         )
 
 

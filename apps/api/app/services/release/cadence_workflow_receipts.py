@@ -58,7 +58,11 @@ def same_attempt(
         for item in sources
     }
     expected_sources = {
-        (item.source_id, item.succeeded, item.receipt_sha256)
+        (
+            item.source_id,
+            item.status == "succeeded",
+            item.receipt_sha256,
+        )
         for item in payload.source_results
     }
     return identity == expected and actual_sources == expected_sources

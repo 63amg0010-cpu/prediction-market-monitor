@@ -3123,9 +3123,29 @@
         "additionalProperties": false,
         "description": "Public-safe exact source result emitted by the legacy operation.",
         "properties": {
+          "code": {
+            "enum": [
+              "ok",
+              "transient_timeout",
+              "transient_transport",
+              "operation_rejected",
+              "unexpected_failure"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
           "receipt_sha256": {
             "pattern": "^[0-9a-f]{64}$",
             "title": "Receipt Sha256",
+            "type": "string"
+          },
+          "retry_classification": {
+            "enum": [
+              "not_applicable",
+              "safe_terminal",
+              "hold"
+            ],
+            "title": "Retry Classification",
             "type": "string"
           },
           "source_id": {
@@ -3133,14 +3153,20 @@
             "title": "Source Id",
             "type": "string"
           },
-          "succeeded": {
-            "title": "Succeeded",
-            "type": "boolean"
+          "status": {
+            "enum": [
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
           }
         },
         "required": [
           "source_id",
-          "succeeded",
+          "status",
+          "code",
+          "retry_classification",
           "receipt_sha256"
         ],
         "title": "SourceResult",

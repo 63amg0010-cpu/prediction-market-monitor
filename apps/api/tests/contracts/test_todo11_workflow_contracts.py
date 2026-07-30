@@ -176,6 +176,14 @@ def _assert_cadence_recording(
     upload = named["Upload public cadence receipt"]
     assert steps.index(resolve) < steps.index(operation) < steps.index(record)
     assert steps.index(record) < steps.index(upload)
+    assert record["id"] == "cadence-record"
+    assert record["if"] == (
+        "${{ always() && (github.event_name == 'schedule' "
+        "|| inputs.mode == 'cadence-retry') }}"
+    )
+    assert upload["if"] == (
+        "${{ always() && steps.cadence-record.outcome == 'success' }}"
+    )
 
     resolve_command = str(resolve["run"])
     assert f"slot --kind {kind}" in resolve_command

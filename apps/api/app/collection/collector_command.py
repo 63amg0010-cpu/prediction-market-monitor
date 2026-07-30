@@ -7,9 +7,11 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .cadence_result import (
+    CadenceFailureContext,
     CadenceOperationResult,
     CadenceSourceResult,
     result_hash,
+    write_failure_result,
     write_result,
 )
 from .cli_config import (
@@ -29,13 +31,17 @@ EXPECTED_CADENCE_SOURCES = 2
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
+    from uuid import UUID
 
     from .collector_workflow import (
         CollectorControlPlane,
         CommandSecrets,
         SourceExecution,
     )
-    from .completion_models import CompletionResponse
+    from .completion_models import (
+        CompletionPublicationResponse,
+        CompletionResponse,
+    )
 
 
 async def execute_collect_command(
@@ -63,51 +69,79 @@ async def execute_collect_command(
 
 async def collect(environment: Mapping[str, str]) -> None:
     """Construct managed clients and run one bounded collection invocation."""
-    async with AsyncExitStack() as stack:
-        client = await stack.enter_async_context(
-            ControlPlaneClient(required(environment, "MONITOR_API_URL"), environment)
-        )
-        sources = await source_executions(environment, stack, system_clock)
-        started_at = datetime.now(UTC)
-        completions = await execute_collect_command(
-            environment,
-            client,
-            sources,
-            command_secrets,
-            system_clock,
-        )
-        output = environment.get("MONITOR_CADENCE_RESULT_PATH")
+    output = environment.get("MONITOR_CADENCE_RESULT_PATH")
+    expected = source_ids(environment)
+    slot_key = required(environment, "MONITOR_CADENCE_SLOT_KEY")
+    started_at = datetime.now(UTC)
+    try:
+        async with AsyncExitStack() as stack:
+            client = await stack.enter_async_context(
+                ControlPlaneClient(
+                    required(environment, "MONITOR_API_URL"), environment
+                )
+            )
+            sources = await source_executions(environment, stack, system_clock)
+            completions = await execute_collect_command(
+                environment,
+                client,
+                sources,
+                command_secrets,
+                system_clock,
+            )
         if output:
             publications = tuple(
                 publication
                 for completion in completions
                 for publication in completion.publications
             )
-            by_source = {item.source_id: item for item in publications}
-            expected = source_ids(environment)
-            if (
-                len(publications) != EXPECTED_CADENCE_SOURCES
-                or set(by_source) != set(expected)
-            ):
-                message = "cadence_collection_result_source_set_mismatch"
-                raise ValueError(message)
+            by_source = _publication_map(publications, expected)
             write_result(
                 output,
                 CadenceOperationResult(
                     schedule_kind="collection",
-                    slot_key=required(environment, "MONITOR_CADENCE_SLOT_KEY"),
+                    slot_key=slot_key,
                     started_at=started_at.isoformat(),
                     completed_at=datetime.now(UTC).isoformat(),
                     source_results=tuple(
                         CadenceSourceResult(
                             source_id=source_id,
-                            succeeded=True,
+                            status="succeeded",
+                            code="ok",
+                            retry_classification="not_applicable",
                             receipt_sha256=result_hash(by_source[source_id]),
                         )
                         for source_id in expected
                     ),
                 ),
             )
+    except Exception as error:
+        if output:
+            write_failure_result(
+                output,
+                CadenceFailureContext(
+                    "collection",
+                    slot_key,
+                    expected,
+                    started_at.isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+                error=error,
+            )
+        raise
+
+
+def _publication_map(
+    publications: tuple[CompletionPublicationResponse, ...],
+    expected: tuple[UUID, ...],
+) -> dict[UUID, CompletionPublicationResponse]:
+    by_source = {item.source_id: item for item in publications}
+    if (
+        len(publications) != EXPECTED_CADENCE_SOURCES
+        or set(by_source) != set(expected)
+    ):
+        message = "cadence_collection_result_source_set_mismatch"
+        raise ValueError(message)
+    return by_source
 
 
 __all__ = ("collect", "execute_collect_command")

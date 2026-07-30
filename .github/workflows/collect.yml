@@ -257,6 +257,8 @@ jobs:
           REDDIT_OAUTH_ACCESS_TOKEN: ${{ secrets.REDDIT_OAUTH_ACCESS_TOKEN }}
           REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT }}
       - name: Record durable cadence attempt
+        id: cadence-record
+        if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'cadence-retry') }}
         shell: bash
         env:
           CADENCE_EPOCH_ID: ${{ vars.CADENCE_EPOCH_ID }}
@@ -272,6 +274,7 @@ jobs:
             --result "$RUNNER_TEMP/cadence-operation-result.json" \
             --json-out "$RUNNER_TEMP/cadence-attempt-receipt.json"
       - name: Upload public cadence receipt
+        if: ${{ always() && steps.cadence-record.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: cadence-collection-${{ github.run_id }}-${{ github.run_attempt }}

@@ -1884,15 +1884,28 @@ export interface components {
          * @description Public-safe exact source result emitted by the legacy operation.
          */
         SourceResult: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "ok" | "transient_timeout" | "transient_transport" | "operation_rejected" | "unexpected_failure";
             /** Receipt Sha256 */
             receipt_sha256: string;
+            /**
+             * Retry Classification
+             * @enum {string}
+             */
+            retry_classification: "not_applicable" | "safe_terminal" | "hold";
             /**
              * Source Id
              * Format: uuid
              */
             source_id: string;
-            /** Succeeded */
-            succeeded: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "succeeded" | "failed";
         };
         /**
          * SourceStatus

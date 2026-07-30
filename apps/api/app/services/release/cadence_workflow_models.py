@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from hashlib import sha256
 from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, Protocol
 
 from pydantic import (
@@ -31,8 +32,54 @@ class SourceResult(BaseModel):
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
     source_id: uuid.UUID
-    succeeded: bool
+    status: Literal["succeeded", "failed"]
+    code: Literal[
+        "ok",
+        "transient_timeout",
+        "transient_transport",
+        "operation_rejected",
+        "unexpected_failure",
+    ]
+    retry_classification: Literal[
+        "not_applicable", "safe_terminal", "hold"
+    ]
     receipt_sha256: Sha256Hex
+
+    @model_validator(mode="after")
+    def require_closed_outcome_shape(self) -> SourceResult:
+        """Reject an unreviewed status/code/retry combination."""
+        success = (
+            self.status == "succeeded"
+            and self.code == "ok"
+            and self.retry_classification == "not_applicable"
+        )
+        safe = (
+            self.status == "failed"
+            and self.code in {"transient_timeout", "transient_transport"}
+            and self.retry_classification == "safe_terminal"
+        )
+        held = (
+            self.status == "failed"
+            and self.code in {"operation_rejected", "unexpected_failure"}
+            and self.retry_classification == "hold"
+        )
+        expected_failure_hash = sha256(
+            "\x00".join(
+                (
+                    "cadence-operation-source.v1",
+                    str(self.source_id),
+                    self.code,
+                )
+            ).encode()
+        ).hexdigest()
+        hash_bound = (
+            self.status == "succeeded"
+            or self.receipt_sha256 == expected_failure_hash
+        )
+        if not ((success or safe or held) and hash_bound):
+            message = "cadence_source_result_shape_invalid"
+            raise ValueError(message)
+        return self
 
 
 class CadenceWorkflowAttemptRequest(BaseModel):

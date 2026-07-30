@@ -83,7 +83,9 @@ def request(
         source_results=tuple(
             SourceResult(
                 source_id=source,
-                succeeded=True,
+                status="succeeded",
+                code="ok",
+                retry_classification="not_applicable",
                 receipt_sha256="d" * 64,
             )
             for source in SOURCES

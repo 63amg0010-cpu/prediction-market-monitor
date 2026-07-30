@@ -43,19 +43,25 @@ def retry_permitted(
     reason: str | None,
 ) -> bool:
     """Permit only one still-timely explicit retry of a failed first attempt."""
-    if reason is None or payload.workflow_mode == "manual":
+    safe_failure = any(
+        item.status == "failed" for item in payload.source_results
+    ) and all(
+        item.status == "succeeded"
+        or item.retry_classification == "safe_terminal"
+        for item in payload.source_results
+    )
+    if (
+        reason != "source_failed"
+        or payload.workflow_mode != "schedule"
+        or payload.cadence_attempt != 1
+        or not safe_failure
+    ):
         return False
     due = row["due_at"]
     if not isinstance(due, datetime):
         return False
     limit = timedelta(minutes=30 if payload.schedule_kind == "collection" else 5)
-    retryable = reason not in {
-        "started_late",
-        "duplicate_after_acceptance",
-        "initial_attempt_already_recorded",
-        "retry_attempt_already_recorded",
-    }
-    return retryable and payload.completed_at.astimezone(UTC) < due + limit
+    return payload.completed_at.astimezone(UTC) < due + limit
 
 
 def require_workflow_identity(payload: CadenceWorkflowAttemptRequest) -> None:
@@ -151,7 +157,7 @@ def _basic_reason(
         return "epoch_invalidated"
     if sources != expected:
         return "source_set_mismatch"
-    if not all(item.succeeded for item in payload.source_results):
+    if not all(item.status == "succeeded" for item in payload.source_results):
         return "source_failed"
     if payload.workflow_mode == "manual":
         return "manual_mode_excluded"

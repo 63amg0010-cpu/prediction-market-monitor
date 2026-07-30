@@ -11,12 +11,15 @@ from app.api.routes.verification import (
 )
 
 from .cadence_result import (
+    CadenceFailureContext,
     CadenceOperationResult,
     CadenceSourceResult,
+    failure_receipt_hash,
     result_hash,
+    write_failure_result,
     write_result,
 )
-from .cli_config import json_bytes, required
+from .cli_config import json_bytes, required, source_ids
 from .control_plane_client import ControlPlaneClient
 from .verification import SourceVerificationFacts, derive_source_result
 
@@ -27,6 +30,7 @@ if TYPE_CHECKING:
 async def verify(environment: Mapping[str, str]) -> None:
     """Fetch one no-store snapshot and record its expected verifier slot."""
     scope = required(environment, "MONITOR_SCOPE_VERSION")
+    expected = source_ids(environment)
     started_at = datetime.now(UTC)
     slot_value = environment.get("MONITOR_CADENCE_SLOT_KEY")
     slot = (
@@ -38,22 +42,23 @@ async def verify(environment: Mapping[str, str]) -> None:
             microsecond=0,
         )
     )
-    async with ControlPlaneClient(
-        required(environment, "MONITOR_API_URL"), environment
-    ) as client:
-        token = await client.exchange_github_oidc()
-        response = await client.authorized_request(
-            "GET", "/v1/verification/snapshot", token
-        )
-        snapshot = VerificationSnapshot.model_validate_json(response.content)
-        payload = observation(snapshot, scope, slot, started_at)
-        _ = await client.authorized_request(
-            "POST",
-            "/v1/verification/observations",
-            token,
-            content=json_bytes(payload.model_dump(mode="json")),
-        )
-        output = environment.get("MONITOR_CADENCE_RESULT_PATH")
+    output = environment.get("MONITOR_CADENCE_RESULT_PATH")
+    try:
+        async with ControlPlaneClient(
+            required(environment, "MONITOR_API_URL"), environment
+        ) as client:
+            token = await client.exchange_github_oidc()
+            response = await client.authorized_request(
+                "GET", "/v1/verification/snapshot", token
+            )
+            snapshot = VerificationSnapshot.model_validate_json(response.content)
+            payload = observation(snapshot, scope, slot, started_at)
+            _ = await client.authorized_request(
+                "POST",
+                "/v1/verification/observations",
+                token,
+                content=json_bytes(payload.model_dump(mode="json")),
+            )
         if output:
             completed_at = datetime.now(UTC)
             write_result(
@@ -66,13 +71,47 @@ async def verify(environment: Mapping[str, str]) -> None:
                     source_results=tuple(
                         CadenceSourceResult(
                             source_id=item.source_id,
-                            succeeded=item.status.value == "passed",
-                            receipt_sha256=result_hash(item),
+                            status=(
+                                "succeeded"
+                                if item.status.value == "passed"
+                                else "failed"
+                            ),
+                            code=(
+                                "ok"
+                                if item.status.value == "passed"
+                                else "operation_rejected"
+                            ),
+                            retry_classification=(
+                                "not_applicable"
+                                if item.status.value == "passed"
+                                else "hold"
+                            ),
+                            receipt_sha256=(
+                                result_hash(item)
+                                if item.status.value == "passed"
+                                else failure_receipt_hash(
+                                    item.source_id, "operation_rejected"
+                                )
+                            ),
                         )
                         for item in payload.source_results
                     ),
                 ),
             )
+    except Exception as error:
+        if output:
+            write_failure_result(
+                output,
+                CadenceFailureContext(
+                    "verifier",
+                    slot.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    expected,
+                    started_at.isoformat(),
+                    datetime.now(UTC).isoformat(),
+                ),
+                error=error,
+            )
+        raise
 
 
 def observation(

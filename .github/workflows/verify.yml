@@ -247,9 +247,12 @@ jobs:
           MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
           MONITOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'scheduled' }}
           MONITOR_SCOPE_VERSION: ${{ vars.MONITOR_SCOPE_VERSION }}
+          MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
           MONITOR_CADENCE_RESULT_PATH: ${{ runner.temp }}/cadence-operation-result.json
           MONITOR_CADENCE_SLOT_KEY: ${{ env.CADENCE_SLOT_KEY }}
       - name: Record durable cadence attempt
+        id: cadence-record
+        if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'cadence-retry') }}
         shell: bash
         env:
           CADENCE_EPOCH_ID: ${{ vars.CADENCE_EPOCH_ID }}
@@ -265,6 +268,7 @@ jobs:
             --result "$RUNNER_TEMP/cadence-operation-result.json" \
             --json-out "$RUNNER_TEMP/cadence-attempt-receipt.json"
       - name: Upload public cadence receipt
+        if: ${{ always() && steps.cadence-record.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: cadence-verifier-${{ github.run_id }}-${{ github.run_attempt }}

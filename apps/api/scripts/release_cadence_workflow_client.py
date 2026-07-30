@@ -115,12 +115,20 @@ async def record(args: Arguments, environment: Mapping[str, str]) -> int:
         )
         _ = response.raise_for_status()
     receipt = cast("dict[str, object]", response.json())
+    operation_succeeded = all(
+        item.status == "succeeded" for item in result.source_results
+    )
     if (
         receipt.get("schema") != "cadence-workflow-attempt-receipt.v1"
         or receipt.get("recorded") is not True
         or (
             args.mode in {"schedule", "retry"}
+            and operation_succeeded
             and receipt.get("cadence_accepted") is not True
+        )
+        or (
+            not operation_succeeded
+            and receipt.get("cadence_accepted") is not False
         )
     ):
         message = "cadence_workflow_receipt_rejected"
