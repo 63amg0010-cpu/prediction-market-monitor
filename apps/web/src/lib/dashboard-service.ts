@@ -12,7 +12,12 @@ import {
   PostPageSchema,
   ReportPageSchema,
 } from "./dashboard-contract"
-import { type DashboardFilters, filtersToSearchParams, reportSearchParams } from "./filter-contract"
+import {
+  type DashboardFilters,
+  filtersToSearchParams,
+  POST_PAGE_SIZE,
+  reportSearchParams,
+} from "./filter-contract"
 import { apiUrl, runNetworkRequest, UPSTREAM_REQUEST_TIMEOUT_MS } from "./server-http"
 
 type ProjectionRequest<T> = {
@@ -81,8 +86,8 @@ export async function loadDashboard(filters: DashboardFilters): Promise<Dashboar
     const token = await getBffReadToken()
     const dashboardParams = filtersToSearchParams(filters)
     const postParams = new URLSearchParams(dashboardParams)
-    postParams.set("page", "1")
-    postParams.set("page_size", "50")
+    postParams.set("page", (filters.page ?? 1).toString())
+    postParams.set("page_size", POST_PAGE_SIZE.toString())
     const [dashboard, posts, reports] = await Promise.all([
       getProjection({
         path: "/v1/dashboard",

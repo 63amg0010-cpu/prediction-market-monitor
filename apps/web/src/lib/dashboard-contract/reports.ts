@@ -41,7 +41,7 @@ const SourceCoverageSchema = z
     role: z.enum(["primary", "comparison"]),
     source_id: z.string().uuid(),
     country: CountrySchema,
-    platform: z.enum(["reddit", "dcinside", "toss_securities", "naver_finance"]),
+    platform: z.enum(["reddit", "dcinside", "toss_securities", "naver_finance", "manifold"]),
     community: z.string().min(1),
     expected: z.boolean(),
     enabled: z.boolean(),
