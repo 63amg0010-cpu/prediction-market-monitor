@@ -12,17 +12,6 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Final, assert_never
 from urllib.parse import urlsplit
 
-from apps.api.scripts.free_tier_capture_contract import (
-    CAPTURE_FIELDS,
-    DECEMBER,
-    DIMENSION_FIELDS,
-    OPTIONAL_CHAIN_FIELDS,
-    PROVIDER_DIMENSIONS,
-    PROVIDER_HOSTS,
-    PROVIDER_PLANS,
-    PROVIDER_PROJECTS,
-    VERIFIED_FIELDS,
-)
 from apps.api.scripts.free_tier_domain import (
     PHASES,
     PROVIDERS,
@@ -35,6 +24,17 @@ from apps.api.scripts.free_tier_domain import (
     require_string,
     sha256_hex,
     with_receipt_sha,
+)
+from apps.api.scripts.free_tier_evidence_contract import (
+    CAPTURE_FIELDS,
+    DECEMBER,
+    DIMENSION_FIELDS,
+    OPTIONAL_CHAIN_FIELDS,
+    PROVIDER_DIMENSIONS,
+    PROVIDER_HOSTS,
+    PROVIDER_PLANS,
+    PROVIDER_PROJECTS,
+    VERIFIED_FIELDS,
 )
 from apps.api.scripts.free_tier_identities import (
     identity_bindings,

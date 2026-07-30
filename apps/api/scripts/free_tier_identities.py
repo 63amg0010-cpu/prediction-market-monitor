@@ -6,16 +6,16 @@ from __future__ import annotations
 
 import os
 
-from apps.api.scripts.free_tier_capture_contract import (
-    IDENTITY_BINDING_FIELDS,
-    PROVIDER_IDENTITY_ENVS,
-    PROVIDER_IDENTITY_ROLES,
-)
 from apps.api.scripts.free_tier_domain import (
     GateHoldError,
     JsonObject,
     JsonValue,
     sha256_hex,
+)
+from apps.api.scripts.free_tier_evidence_contract import (
+    IDENTITY_BINDING_FIELDS,
+    PROVIDER_IDENTITY_ENVS,
+    PROVIDER_IDENTITY_ROLES,
 )
 
 

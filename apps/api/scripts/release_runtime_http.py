@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 
 import httpx2
 
-from scripts.release_chain_capture import CaptureObservation
+from scripts.release_chain_evidence_leaf import CaptureObservation
 
 MAX_HTTP_BYTES: Final = 1_048_576
 

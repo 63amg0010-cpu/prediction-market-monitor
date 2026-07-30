@@ -1,4 +1,4 @@
-"""Injected, redacted acceptance current-state capture materialization."""
+"""Injected, redacted acceptance current-state evidence materialization."""
 
 # ruff: noqa: EM101, EM102, PLR2004, TC003
 

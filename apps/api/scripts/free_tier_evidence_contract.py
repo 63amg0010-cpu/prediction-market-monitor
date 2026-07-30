@@ -1,4 +1,4 @@
-"""Immutable provider quota capture contract."""
+"""Immutable provider quota evidence contract."""
 
 from typing import Final
 

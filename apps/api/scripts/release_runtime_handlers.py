@@ -16,7 +16,7 @@ from uuid import UUID
 import anyio
 
 from scripts.release_chain_acceptance import NamedPath
-from scripts.release_chain_capture import (
+from scripts.release_chain_evidence_leaf import (
     AcceptanceCaptureRequest,
     handle_acceptance_capture,
 )

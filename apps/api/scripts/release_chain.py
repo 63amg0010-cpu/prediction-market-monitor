@@ -8,17 +8,17 @@ from .release_chain_acceptance import (
     handle_acceptance_refresh,
 )
 from .release_chain_aggregate import AggregateRequest, handle_aggregate
-from .release_chain_capture import (
-    AcceptanceCaptureRequest,
-    CaptureObservation,
-    CurrentCaptureProvider,
-    handle_acceptance_capture,
-)
 from .release_chain_common import (
     PathReceiptIO,
     ReceiptIO,
     ReleaseChainError,
     utc_now,
+)
+from .release_chain_evidence_leaf import (
+    AcceptanceCaptureRequest,
+    CaptureObservation,
+    CurrentCaptureProvider,
+    handle_acceptance_capture,
 )
 from .release_chain_final import (
     FinalFanInRequest,

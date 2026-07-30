@@ -7,7 +7,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from math import ceil
 
-from apps.api.scripts.free_tier_capture_contract import (
+from apps.api.scripts.free_tier_domain import (
+    GateHoldError,
+    JsonObject,
+    JsonValue,
+    page_bound_for_window,
+    parse_time,
+)
+from apps.api.scripts.free_tier_evidence_contract import (
     ARTIFACT_FIELDS,
     ATTEMPT_FIELDS,
     BACKUP_FIELDS,
@@ -17,13 +24,6 @@ from apps.api.scripts.free_tier_capture_contract import (
     REQUIRED_DEPLOYMENT_OPERATIONS,
     REQUIRED_WORKFLOW_KINDS,
     TRAFFIC_FIELDS,
-)
-from apps.api.scripts.free_tier_domain import (
-    GateHoldError,
-    JsonObject,
-    JsonValue,
-    page_bound_for_window,
-    parse_time,
 )
 
 GIB = 1024 * 1024 * 1024

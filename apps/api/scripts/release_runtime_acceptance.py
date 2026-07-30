@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 import anyio
 from sqlalchemy import text
 
-from scripts.release_chain_capture import CaptureObservation
+from scripts.release_chain_evidence_leaf import CaptureObservation
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
