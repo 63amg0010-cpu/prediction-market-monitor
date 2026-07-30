@@ -200,7 +200,11 @@ def post_page_outcome(
     match page.termination:  # noqa: RUF100  # noqa: MATCH_OK
         case PageTermination.CONTINUE:
             return None
-        case PageTermination.SOURCE_EXHAUSTED | PageTermination.REVIEWED_POST_CAP:
+        case (
+            PageTermination.SOURCE_EXHAUSTED
+            | PageTermination.REVIEWED_POST_CAP
+            | PageTermination.REVIEWED_BYTE_CAP
+        ):
             return success_outcome(run_id, state)
         case PageTermination.RATE_LIMIT_PAUSE:
             return rate_limit_outcome(run_id, state, page, finished_at)

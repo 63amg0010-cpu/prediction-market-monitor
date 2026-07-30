@@ -143,6 +143,24 @@ def test_terminal_commit_seals_cursor_ordinal_and_chain() -> None:
     assert plan.updated_run.status is RunStatus.RUNNING
 
 
+def test_reviewed_byte_cap_terminal_reason_is_accepted() -> None:
+    # Given: the adapter stopped this page at its reviewed persisted-byte cap.
+    ctx = context()
+    page = request(
+        ctx,
+        terminal=True,
+        reason=TerminalReason.REVIEWED_BYTE_CAP,
+    )
+
+    # When: the server prepares the adapter's terminal page commit.
+    plan = prepare_page_commit(ctx, page, IdSequence())
+
+    # Then: the byte-cap marker is persisted without a fabricated count threshold.
+    assert plan.commit.is_terminal_page is True
+    assert plan.commit.terminal_reason is TerminalReason.REVIEWED_BYTE_CAP
+    assert plan.updated_run.terminal_reason is TerminalReason.REVIEWED_BYTE_CAP
+
+
 def test_page_content_and_chain_change_when_terminal_flag_changes() -> None:
     # Given: otherwise identical nonterminal and terminal requests.
     ctx = context()

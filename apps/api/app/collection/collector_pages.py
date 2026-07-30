@@ -88,6 +88,8 @@ def _terminal_reason(termination: PageTermination) -> TerminalReason | None:
         return TerminalReason.SOURCE_EXHAUSTED
     if termination is PageTermination.REVIEWED_POST_CAP:
         return TerminalReason.REVIEWED_POST_CAP
+    if termination is PageTermination.REVIEWED_BYTE_CAP:
+        return TerminalReason.REVIEWED_BYTE_CAP
     return None
 
 

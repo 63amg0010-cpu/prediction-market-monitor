@@ -36,6 +36,7 @@ class PageTermination(StrEnum):
     CONTINUE = "continue"
     SOURCE_EXHAUSTED = "source_exhausted"
     REVIEWED_POST_CAP = "reviewed_post_cap"
+    REVIEWED_BYTE_CAP = "reviewed_byte_cap"
     RATE_LIMIT_PAUSE = "rate_limit_pause"
 
 

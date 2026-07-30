@@ -95,7 +95,7 @@ def validate_terminal_cap(
             valid = context.run.committed_page_count + 1 == reviewed_page_cap
         case TerminalReason.REVIEWED_POST_CAP:
             valid = context.run.accepted_count + accepted >= reviewed_post_cap
-        case TerminalReason.SOURCE_EXHAUSTED | None:
+        case TerminalReason.REVIEWED_BYTE_CAP | TerminalReason.SOURCE_EXHAUSTED | None:
             return
         case _:
             assert_never(request.terminal_reason)

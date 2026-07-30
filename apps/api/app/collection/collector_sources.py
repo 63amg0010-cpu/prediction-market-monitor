@@ -14,6 +14,11 @@ from .adapters.dcinside import (
     DCInsideFetchRequest,
     create_dcinside_http_client,
 )
+from .adapters.manifold import (
+    ManifoldAdapter,
+    ManifoldFetchRequest,
+    create_manifold_http_client,
+)
 from .adapters.models import (
     AdapterPage,
     BlockedFetchRequest,
@@ -109,6 +114,18 @@ async def source_executions(
                 )
             )
             continue
+        if platform is SourcePlatform.MANIFOLD:
+            http_client = await stack.enter_async_context(
+                create_manifold_http_client()
+            )
+            executions.append(
+                _manifold_execution(
+                    source_id,
+                    ManifoldAdapter(http_client),
+                    context,
+                )
+            )
+            continue
         executions.append(
             _blocked_execution(source_id, _blocked_adapter(platform), context)
         )
@@ -167,6 +184,32 @@ def _dcinside_execution(
     return SourceExecution(
         source_id=source_id,
         platform=SourcePlatform.DCINSIDE,
+        preflight=preflight,
+        fetch_page=fetch_page,
+        authorization=context.authorization,
+    )
+
+
+def _manifold_execution(
+    source_id: UUID,
+    adapter: ManifoldAdapter,
+    context: PreflightContext,
+) -> SourceExecution:
+    def preflight() -> PreflightResult:
+        return adapter.preflight(context)
+
+    async def fetch_page(state: PageCursor) -> AdapterPage:
+        return await adapter.fetch_page(
+            ManifoldFetchRequest(
+                preflight=context,
+                page_ordinal=state.ordinal,
+                accepted_so_far=state.accepted_count,
+            )
+        )
+
+    return SourceExecution(
+        source_id=source_id,
+        platform=SourcePlatform.MANIFOLD,
         preflight=preflight,
         fetch_page=fetch_page,
         authorization=context.authorization,
