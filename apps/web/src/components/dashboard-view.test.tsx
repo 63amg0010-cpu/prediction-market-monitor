@@ -60,7 +60,111 @@ describe("truthful dashboard states", () => {
     expect(screen.getByText("긍정")).toBeInTheDocument()
     expect(screen.getByText("댓글 7")).toBeInTheDocument()
     expect(screen.getByText("점수 15")).toBeInTheDocument()
+    expect(screen.getByText("최신 원문").closest("p")).toHaveTextContent("2026. 07. 22.")
+    expect(screen.getByLabelText("소스별 최근 수집")).toHaveTextContent("Reddit Prediction Markets")
   })
+
+  it("preserves every filter in previous and next page links", () => {
+    const pagedState: DashboardState = {
+      kind: "ready",
+      data: DashboardBundleSchema.parse({
+        ...FASTAPI_DASHBOARD_BUNDLE_FIXTURE,
+        posts: {
+          ...FASTAPI_DASHBOARD_BUNDLE_FIXTURE.posts,
+          page: { page: 2, page_size: 50, total_items: 151, has_next: true },
+        },
+      }),
+    }
+    render(
+      <DashboardView
+        activeView="posts"
+        filters={{
+          country: "kr",
+          sourceId: "22222222-2222-4222-8222-222222222222",
+          keyword: "monetary-policy",
+          search: "금리 인하",
+          period: "90d",
+          page: 2,
+        }}
+        state={pagedState}
+      />,
+    )
+
+    expect(screen.getByText("2/4 페이지")).toBeInTheDocument()
+    for (const name of ["이전 페이지", "다음 페이지"]) {
+      const href = screen.getByRole("link", { name }).getAttribute("href")
+      expect(href).toContain("country=kr")
+      expect(href).toContain("source_id=22222222-2222-4222-8222-222222222222")
+      expect(href).toContain("keyword=monetary-policy")
+      expect(href).toContain("search=%EA%B8%88%EB%A6%AC+%EC%9D%B8%ED%95%98")
+      expect(href).toContain("period=90d")
+    }
+  })
+
+  it("disables pagination boundaries without misleading links", () => {
+    render(
+      <DashboardView activeView="posts" filters={{ ...filters, page: 1 }} state={readyState} />,
+    )
+
+    expect(screen.getByText("1/1 페이지")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "이전 페이지" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "다음 페이지" })).not.toBeInTheDocument()
+    expect(screen.getByText("이전 페이지")).toHaveAttribute("aria-disabled", "true")
+    expect(screen.getByText("다음 페이지")).toHaveAttribute("aria-disabled", "true")
+  })
+
+  it.each([
+    {
+      name: "literal search miss",
+      filters: { ...filters, search: "일치하지 않는 검색" },
+      state: {
+        kind: "ready",
+        data: {
+          ...FASTAPI_DASHBOARD_BUNDLE_FIXTURE,
+          posts: {
+            items: [],
+            page: { page: 1, page_size: 50, total_items: 0, has_next: false },
+          },
+        },
+      },
+      copy: "검색어와 일치 없음",
+    },
+    {
+      name: "empty period",
+      filters: { ...filters, period: "30d" },
+      state: {
+        kind: "ready",
+        data: {
+          ...FASTAPI_DASHBOARD_BUNDLE_FIXTURE,
+          posts: {
+            items: [],
+            page: { page: 1, page_size: 50, total_items: 0, has_next: false },
+          },
+        },
+      },
+      copy: "선택 기간에 새 원문 없음",
+    },
+    {
+      name: "API unavailable",
+      filters,
+      state: {
+        kind: "unavailable",
+        reason: "BFF에 연결할 수 없습니다.",
+        correlationId: null,
+        retryable: true,
+      },
+      copy: "수집/연결 상태 확인 필요",
+    },
+  ] as const)(
+    "$name shows the exact truthful posts state",
+    ({ filters: stateFilters, state, copy }) => {
+      render(
+        <DashboardView activeView="posts" filters={stateFilters} state={state as DashboardState} />,
+      )
+
+      expect(screen.getByText(copy)).toBeInTheDocument()
+    },
+  )
 
   it("passes a live mention-chart retry callback to the reusable frame", () => {
     const errorState: DashboardState = {

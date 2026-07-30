@@ -54,10 +54,10 @@ describe("CSS module split contract", () => {
     const responsive = ["responsive.css", "responsive-01.css"].map(source).join("")
 
     expect(sha256(components)).toBe(
-      "37e2bcf98428c7c057a3d7815b7c4bafac917bfadbbd3afaf7d146c456f69a47",
+      "7f123d490286d062eeda6a1eab0c67d87cae57378c0d78f32285c0c0f86af897",
     )
     expect(sha256(responsive)).toBe(
-      "2d42d53e34cd2911bc0aef5cf9623928c2a18951a3f047f3f4401d1bd26b50c3",
+      "9380b0fc63a97bc9ec04c51d844245ca21e0a7233cac53b87eb974c9587da636",
     )
   })
 })

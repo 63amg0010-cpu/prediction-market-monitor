@@ -38,8 +38,9 @@ function appliedFilterLabels(
         "소스 선택됨",
     )
   }
-  if (filters.keyword.length > 0) labels.push(`“${filters.keyword}”`)
-  if (filters.period !== "7d") labels.push(PERIOD_LABELS[filters.period])
+  if (filters.keyword.length > 0) labels.push(`분류: ${filters.keyword}`)
+  if ((filters.search ?? "").length > 0) labels.push(`검색: ${filters.search}`)
+  if (filters.period !== "30d") labels.push(PERIOD_LABELS[filters.period])
   return labels
 }
 
@@ -81,6 +82,84 @@ export function FilterBar({ actionPath, filters, resultCount, sources }: FilterB
     }
   }
 
+  const formContent = (
+    <>
+      <div className="filter-sheet-heading">
+        <div>
+          <strong>필터</strong>
+          <span>{resultCount === null ? "현재 결과 집계 전" : `현재 결과 ${resultCount}건`}</span>
+        </div>
+        <button aria-label="필터 닫기" className="icon-button" onClick={cancel} type="button">
+          <X aria-hidden size={20} />
+        </button>
+      </div>
+      <div className="filter-fields">
+        <label>
+          국가
+          <select defaultValue={filters.country} name="country">
+            <option value="all">전체</option>
+            <option value="kr">한국</option>
+            <option value="us">미국</option>
+          </select>
+        </label>
+        <label>
+          소스
+          <select defaultValue={filters.sourceId} name="source_id">
+            <option value="">전체 소스</option>
+            {sources.map((source) => (
+              <option key={source.source_id} value={source.source_id}>
+                {source.display_name}
+              </option>
+            ))}
+            {filters.sourceId.length > 0 &&
+              !sources.some((source) => source.source_id === filters.sourceId) && (
+                <option value={filters.sourceId}>선택한 소스</option>
+              )}
+          </select>
+        </label>
+        <label>
+          분류 키워드
+          <input
+            defaultValue={filters.keyword}
+            maxLength={300}
+            name="keyword"
+            placeholder="예: 예측시장, 폴리마켓, 확률"
+          />
+        </label>
+        <label>
+          글 검색
+          <input
+            defaultValue={filters.search ?? ""}
+            maxLength={100}
+            name="search"
+            placeholder="예: 금리 인하, election odds"
+          />
+        </label>
+        <label>
+          기간
+          <select defaultValue={filters.period} name="period">
+            <option value="24h">24시간</option>
+            <option value="7d">7일</option>
+            <option value="14d">14일</option>
+            <option value="30d">30일</option>
+            <option value="90d">90일</option>
+          </select>
+        </label>
+      </div>
+      <div className="filter-sheet-actions">
+        <button className="button button-ghost filter-cancel" onClick={cancel} type="button">
+          취소
+        </button>
+        <Link className="button button-ghost" href={actionPath}>
+          초기화
+        </Link>
+        <button className="button button-primary" type="submit">
+          적용
+        </button>
+      </div>
+    </>
+  )
+
   return (
     <section className="filter-disclosure" aria-label="대시보드 필터 영역">
       <div className="filter-trigger-row">
@@ -103,82 +182,35 @@ export function FilterBar({ actionPath, filters, resultCount, sources }: FilterB
           {applied.length === 0 && <li>기본 조건</li>}
         </ul>
       </div>
-      <form
-        action={actionPath}
-        aria-label="대시보드 필터"
-        className="filter-bar filter-tablet-cluster"
-        data-open={open}
-        id="dashboard-filter-form"
-        method="get"
-        onKeyDown={handleKeyDown}
-        ref={formRef}
-        role={open ? "dialog" : undefined}
-      >
-        <div className="filter-sheet-heading">
-          <div>
-            <strong>필터</strong>
-            <span>{resultCount === null ? "현재 결과 집계 전" : `현재 결과 ${resultCount}건`}</span>
-          </div>
-          <button aria-label="필터 닫기" className="icon-button" onClick={cancel} type="button">
-            <X aria-hidden size={20} />
-          </button>
-        </div>
-        <div className="filter-fields">
-          <label>
-            국가
-            <select defaultValue={filters.country} name="country">
-              <option value="all">전체</option>
-              <option value="kr">한국</option>
-              <option value="us">미국</option>
-            </select>
-          </label>
-          <label>
-            소스
-            <select defaultValue={filters.sourceId} name="source_id">
-              <option value="">전체 소스</option>
-              {sources.map((source) => (
-                <option key={source.source_id} value={source.source_id}>
-                  {source.display_name}
-                </option>
-              ))}
-              {filters.sourceId.length > 0 &&
-                !sources.some((source) => source.source_id === filters.sourceId) && (
-                  <option value={filters.sourceId}>선택한 소스</option>
-                )}
-            </select>
-          </label>
-          <label>
-            키워드
-            <input
-              defaultValue={filters.keyword}
-              maxLength={300}
-              name="keyword"
-              placeholder="예: 예측시장, 폴리마켓, 확률"
-            />
-          </label>
-          <label>
-            기간
-            <select defaultValue={filters.period} name="period">
-              <option value="24h">24시간</option>
-              <option value="7d">7일</option>
-              <option value="14d">14일</option>
-              <option value="30d">30일</option>
-              <option value="90d">90일</option>
-            </select>
-          </label>
-        </div>
-        <div className="filter-sheet-actions">
-          <button className="button button-ghost filter-cancel" onClick={cancel} type="button">
-            취소
-          </button>
-          <Link className="button button-ghost" href={actionPath}>
-            초기화
-          </Link>
-          <button className="button button-primary" type="submit">
-            적용
-          </button>
-        </div>
-      </form>
+      {open ? (
+        <form
+          action={actionPath}
+          aria-label="대시보드 필터"
+          aria-modal="true"
+          className="filter-bar filter-tablet-cluster"
+          data-open="true"
+          id="dashboard-filter-form"
+          method="get"
+          onKeyDown={handleKeyDown}
+          ref={formRef}
+          role="dialog"
+        >
+          {formContent}
+        </form>
+      ) : (
+        <form
+          action={actionPath}
+          aria-label="대시보드 필터"
+          className="filter-bar filter-tablet-cluster"
+          data-open="false"
+          id="dashboard-filter-form"
+          method="get"
+          onKeyDown={handleKeyDown}
+          ref={formRef}
+        >
+          {formContent}
+        </form>
+      )}
     </section>
   )
 }

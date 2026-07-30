@@ -126,12 +126,24 @@ export function DashboardView({ activeView, filters, onRetry, state }: Dashboard
               <MentionAnalysis dashboard={dashboard} onRetry={onRetry} />
               <SentimentChart dashboard={dashboard} />
               <OperationsPanel data={data} />
-              <PostsList data={data} />
+              <PostsList
+                actionPath={VIEW_PATH[activeView]}
+                data={data}
+                filters={filters}
+                stateKind={state.kind}
+              />
               <DailyReport data={data} />
             </div>
           </>
         )}
-        {activeView === "posts" && <PostsList data={data} />}
+        {activeView === "posts" && (
+          <PostsList
+            actionPath={VIEW_PATH[activeView]}
+            data={data}
+            filters={filters}
+            stateKind={state.kind}
+          />
+        )}
         {activeView === "reports" && <DailyReport data={data} />}
         {activeView === "status" && <OperationsPanel data={data} />}
       </div>

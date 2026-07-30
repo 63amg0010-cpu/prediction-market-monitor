@@ -118,6 +118,16 @@
 }
 
 @media (max-width: 39.99rem) {
+  .posts-evidence-summary {
+    grid-template-columns: 1fr;
+  }
+  .pagination {
+    grid-template-columns: 1fr 1fr;
+  }
+  .pagination > strong {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
   .showcase-shell-preview {
     padding: var(--space-2);
   }

@@ -31,7 +31,10 @@ describe("responsive filter disclosure", () => {
 
     fireEvent.click(trigger)
     expect(trigger).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("dialog", { name: "대시보드 필터" })).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "대시보드 필터" })).toHaveAttribute(
+      "aria-modal",
+      "true",
+    )
     expect(screen.getByText("현재 결과 12건")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "취소" }))
@@ -105,11 +108,38 @@ describe("responsive filter disclosure", () => {
       />,
     )
 
-    expect(screen.getByRole("textbox", { name: "키워드" })).toHaveAttribute(
+    expect(screen.getByRole("textbox", { name: "분류 키워드" })).toHaveAttribute(
       "placeholder",
       "예: 예측시장, 폴리마켓, 확률",
     )
+    expect(screen.getByRole("textbox", { name: "글 검색" })).toHaveAttribute(
+      "placeholder",
+      "예: 금리 인하, election odds",
+    )
     expect(screen.getByRole("option", { name: "90일" })).toHaveValue("90d")
     expect(screen.getByRole("list", { name: "적용 중인 필터" })).toHaveTextContent("90일")
+  })
+
+  it("keeps semantic keywords and literal post search distinct in applied chips", () => {
+    render(
+      <FilterBar
+        actionPath="/posts"
+        filters={{
+          country: "all",
+          sourceId: "",
+          keyword: "monetary-policy",
+          search: "금리 인하 election odds",
+          period: "30d",
+          page: 3,
+        }}
+        resultCount={51}
+        sources={[]}
+      />,
+    )
+
+    const chips = screen.getByRole("list", { name: "적용 중인 필터" })
+    expect(chips).toHaveTextContent("분류: monetary-policy")
+    expect(chips).toHaveTextContent("검색: 금리 인하 election odds")
+    expect(screen.getByRole("textbox", { name: "글 검색" })).toHaveValue("금리 인하 election odds")
   })
 })
