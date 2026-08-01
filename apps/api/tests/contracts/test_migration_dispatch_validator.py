@@ -13,6 +13,7 @@ from scripts.migration_dispatch_validator import (
     RunCandidate,
     canonical_body,
     select_unique_run,
+    validate_database_urls,
     validate_dispatch,
     validate_heads,
 )
@@ -220,12 +221,8 @@ def test_attempt_two_requires_matching_failed_safe_receipt() -> None:
 
 def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None:
     # Given: the reviewed 0011 upgrade and 0011-to-0010 downgrade tuples.
-    upgrade = _post_ledger_request(
-        "upgrade", "20260727_0011", "migrate-production"
-    )
-    downgrade = _post_ledger_request(
-        "downgrade", "20260727_0010", "rollback-manifold"
-    )
+    upgrade = _post_ledger_request("upgrade", "20260727_0011", "migrate-production")
+    downgrade = _post_ledger_request("downgrade", "20260727_0010", "rollback-manifold")
 
     # When: both post-ledger requests are validated.
     upgrade_result = validate_dispatch(
@@ -308,15 +305,53 @@ def test_multiple_or_wrong_alembic_heads_are_rejected() -> None:
         validate_heads("20260727_0011\n20260728_0012\n")
 
 
+def test_database_urls_require_one_matching_direct_or_session_5432_target() -> None:
+    migration = (
+        "postgresql+asyncpg://user.tenant:"
+        "test-credential@aws-0-region.pooler.supabase.com:5432/postgres"
+    )
+    native = (
+        "postgresql://user.tenant:"
+        "test-credential@aws-0-region.pooler.supabase.com:5432/postgres"
+    )
+    validate_database_urls(migration, native, native)
+
+
+@pytest.mark.parametrize(
+    ("migration", "dump", "restore"),
+    [
+        (
+            "postgresql+asyncpg://user:secret@pooler.supabase.com:6543/postgres",
+            "postgresql://user:secret@pooler.supabase.com:6543/postgres",
+            "postgresql://user:secret@pooler.supabase.com:6543/postgres",
+        ),
+        (
+            "postgresql+asyncpg://user:secret@pooler.supabase.com:5432/postgres",
+            "postgresql://user:secret@other.supabase.com:5432/postgres",
+            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+        ),
+        (
+            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+        ),
+    ],
+)
+def test_database_urls_reject_transaction_mismatch_or_wrong_driver(
+    migration: str,
+    dump: str,
+    restore: str,
+) -> None:
+    with pytest.raises(DispatchValidationError):
+        validate_database_urls(migration, dump, restore)
+
+
 def test_run_selection_requires_one_exact_workflow_dispatch_identity() -> None:
     # Given: an exact run and a misleading duplicate.
     exact = RunCandidate(
         database_id=123,
         workflow_path=".github/workflows/migrate.yml",
-        display_title=(
-            "migrate-upgrade-20260727_0010-"
-            f"{DISPATCH_NONCE}-attempt-1"
-        ),
+        display_title=(f"migrate-upgrade-20260727_0010-{DISPATCH_NONCE}-attempt-1"),
         head_sha=SHA,
         event="workflow_dispatch",
         attempt=1,
@@ -337,10 +372,7 @@ def test_run_selection_rejects_zero_or_multiple_exact_matches() -> None:
     exact = RunCandidate(
         database_id=123,
         workflow_path=".github/workflows/migrate.yml",
-        display_title=(
-            "migrate-upgrade-20260727_0010-"
-            f"{DISPATCH_NONCE}-attempt-1"
-        ),
+        display_title=(f"migrate-upgrade-20260727_0010-{DISPATCH_NONCE}-attempt-1"),
         head_sha=SHA,
         event="workflow_dispatch",
         attempt=1,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -42,12 +43,557 @@ free_tier_projection = cast(
     "FreeTierProjection",
     cast("object", importlib.import_module("apps.api.scripts.free_tier_projection")),
 )
+free_tier_captures = importlib.import_module("apps.api.scripts.free_tier_captures")
+CAPTURE_FIELDS = cast(
+    "frozenset[str]",
+    importlib.import_module(
+        "apps.api.scripts.free_tier_evidence_contract"
+    ).CAPTURE_FIELDS,
+)
 
 MIB = 1024 * 1024
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "free-tier"
 
 
 def _sha(value: str) -> str:
     return sha256(value.encode()).hexdigest()
+
+
+@pytest.fixture(autouse=True)
+def _private_windows_acl(monkeypatch: pytest.MonkeyPatch) -> None:
+    if os.name == "nt":
+        monkeypatch.setattr(
+            free_tier_captures,
+            "_windows_acl_owner_only",
+            lambda _path: True,
+        )
+
+
+def _write_deployment_root(
+    tmp_path: Path,
+    *,
+    plan_sha: str = "b" * 64,
+    command: str = "deployment-prestate",
+) -> Path:
+    path = tmp_path / f"{command}.json"
+    common: gate.JsonObject = {
+        "reviewed_sha": "a" * 40,
+        "approved_plan_sha256": plan_sha,
+        "activation_nonce": "11111111-1111-4111-8111-111111111111",
+    }
+    if command == "bootstrap-verify":
+        root: gate.JsonObject = {
+            "schema_version": 1,
+            "command": command,
+            "attempt": 1,
+            **common,
+            "approval_round_id": "c" * 64,
+            "approval_launch_sha256s": ["d" * 64, "e" * 64],
+            "dispatch_nonce": "22222222-2222-4222-8222-222222222222",
+            "run_id": 123,
+            "artifact_sha256": "f" * 64,
+            "review_root_sha256": "1" * 64,
+            "no_spend_receipt_sha256": "2" * 64,
+            "backup_sha256": "3" * 64,
+            "state_before": "20260726_0009",
+            "state_after": "20260727_0010",
+            "ledger_exists": True,
+            "manifold_data_exists": False,
+            "enum_residue": False,
+            "accepted": True,
+            "terminal_for_attempt": True,
+            "retry_permitted": False,
+            "predecessor_receipt_sha256": "4" * 64,
+        }
+    elif command == "aggregate":
+        root = gate.with_receipt_sha(
+            {
+                "schema": "release-chain-receipt.v1",
+                "command": command,
+                **common,
+                "approval_round_id": "c" * 64,
+                "approval_launch_sha256s": ["d" * 64, "e" * 64],
+                "dispatch_nonce": None,
+                "attempt": 0,
+                "database_timestamps": {
+                    "created_at_db": "2026-07-29T03:00:00Z"
+                },
+                "accepted": True,
+                "terminal_for_attempt": True,
+                "retry_permitted": False,
+                "predecessor_receipt_sha256": "1" * 64,
+                "details": {
+                    "status": "HOLD",
+                    "fan_in_sha256": "2" * 64,
+                    "cadence_sha256": "3" * 64,
+                    "f4_sha256": "4" * 64,
+                    "acceptance_refresh_sha256": None,
+                },
+            }
+        )
+    else:
+        root = {"command": command, "accepted": True, **common}
+    _ = path.write_text(json.dumps(root), encoding="utf-8")
+    return path
+
+
+def _private_github_capture_inputs(
+    tmp_path: Path,
+) -> tuple[Path, Path, Path, Path, gate.JsonObject]:
+    verified = cast(
+        "gate.JsonObject",
+        json.loads((FIXTURES / "github-verified.json").read_text(encoding="utf-8")),
+    )
+    observation: gate.JsonObject = {
+        "schema": "free-tier.provider-observation.v1",
+        "provider": verified["provider"],
+        "public_project": verified["public_project"],
+        "captured_at": verified["captured_at"],
+        "plan": verified["plan"],
+        "paid_enabled": verified["paid_enabled"],
+        "overage_enabled": verified["overage_enabled"],
+        "quota_status": verified["quota_status"],
+        "dimensions": verified["dimensions"],
+        "source_url_class": verified["source_url_class"],
+        "source_url": (
+            "https://api.github.com/repos/private-account/private-repo"
+            "?access_token=private-url-secret-sentinel"
+        ),
+    }
+    observation_path = tmp_path / "observation.json"
+    raw_response_path = tmp_path / "raw-response.json"
+    screenshot_path = tmp_path / "screenshot.png"
+    output_path = tmp_path / "github-redacted.json"
+    _ = observation_path.write_text(json.dumps(observation), encoding="utf-8")
+    _ = raw_response_path.write_text(
+        json.dumps(
+            {
+                "schema": "free-tier.provider-private-response.v1",
+                "provider": "github",
+                "observation_sha256": gate.sha256_hex(
+                    gate.canonical_bytes(observation)
+                ),
+                "official_payloads": [
+                    {"private": "raw-secret-sentinel"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    _ = screenshot_path.write_bytes(b"private-screenshot-secret-sentinel")
+    for path in (observation_path, raw_response_path, screenshot_path):
+        path.chmod(0o600)
+    return (
+        observation_path,
+        raw_response_path,
+        screenshot_path,
+        output_path,
+        observation,
+    )
+
+
+def _materialize_argv(  # noqa: PLR0913
+    *,
+    observation: Path,
+    raw_response: Path,
+    screenshot: Path,
+    output: Path,
+    predecessor: Path,
+    identity_env: str = "GITHUB_REPOSITORY_ID",
+    phase: str | None = None,
+) -> list[str]:
+    args = [
+        "materialize-provider-capture",
+        "--provider",
+        "github",
+        "--observation",
+        str(observation),
+        "--raw-response",
+        str(raw_response),
+        "--screenshot",
+        str(screenshot),
+        "--identity-env",
+        identity_env,
+        "--expected-sha",
+        "a" * 40,
+        "--expected-plan-sha256",
+        "b" * 64,
+        "--activation-nonce",
+        "11111111-1111-4111-8111-111111111111",
+        "--predecessor-receipt",
+        str(predecessor),
+        "--json-out",
+        str(output),
+    ]
+    if phase is not None:
+        args.extend(("--phase", phase))
+    return args
+
+
+def test_materialize_provider_capture_writes_only_redacted_schema(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
+    )
+    protected_identity = "private-repository-id-sentinel"
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", protected_identity)
+    predecessor = _write_deployment_root(tmp_path)
+
+    assert (
+        gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+            )
+        )
+        == 0
+    )
+
+    materialized = cast(
+        "gate.JsonObject",
+        json.loads(output.read_text(encoding="utf-8")),
+    )
+    redacted = cast("gate.JsonObject", materialized["capture"])
+    assert materialized["schema"] == "free-tier.provider-capture-materialized.v1"
+    assert redacted["schema"] == "free-tier.provider-capture.v1"
+    assert set(redacted) == CAPTURE_FIELDS
+    assert redacted["response_sha256"] == gate.sha256_hex(raw_response.read_bytes())
+    assert redacted["screenshot_sha256"] == gate.sha256_hex(screenshot.read_bytes())
+    assert redacted["source_url_sha256"] == gate.sha256_hex(
+        b"https://api.github.com/repos/private-account/private-repo"
+        b"?access_token=private-url-secret-sentinel"
+    )
+    rendered = output.read_text(encoding="utf-8")
+    assert protected_identity not in rendered
+    assert "raw-secret-sentinel" not in rendered
+    assert "screenshot-secret-sentinel" not in rendered
+    assert "private-url-secret-sentinel" not in rendered
+    assert "private-account" not in rendered
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+    imported = gate.import_provider_capture(
+        provider="github",
+        input_path=output,
+        identity_envs=("GITHUB_REPOSITORY_ID",),
+        expected_sha="a" * 40,
+        expected_plan_sha256="b" * 64,
+        activation_nonce="11111111-1111-4111-8111-111111111111",
+        predecessor=gate.load_json(predecessor),
+        phase="pre-0010",
+    )
+    assert imported["schema"] == "free-tier.provider-capture-verified.v1"
+
+
+def test_materialize_provider_capture_rejects_wrong_identity_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
+    )
+    monkeypatch.setenv("FOREIGN_ID", "private")
+    predecessor = _write_deployment_root(tmp_path)
+    with pytest.raises(gate.GateHoldError, match="exact protected identity envs"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+                identity_env="FOREIGN_ID",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("phase", "command"),
+    [
+        ("post-0010", "bootstrap-verify"),
+        ("acceptance", "aggregate"),
+    ],
+)
+def test_materialize_and_import_accept_later_verified_predecessors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    command: str,
+) -> None:
+    observation, raw_response, screenshot, output, _ = (
+        _private_github_capture_inputs(tmp_path)
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    predecessor_path = _write_deployment_root(tmp_path, command=command)
+    assert (
+        gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor_path,
+                phase=phase,
+            )
+        )
+        == 0
+    )
+    predecessor = gate.load_json(predecessor_path)
+    imported = gate.import_provider_capture(
+        provider="github",
+        input_path=output,
+        identity_envs=("GITHUB_REPOSITORY_ID",),
+        expected_sha="a" * 40,
+        expected_plan_sha256="b" * 64,
+        activation_nonce="11111111-1111-4111-8111-111111111111",
+        predecessor=predecessor,
+        phase=phase,
+    )
+    assert imported["phase"] == phase
+    assert imported["materialization_predecessor_sha256"] == gate.sha256_hex(
+        gate.canonical_bytes(predecessor)
+    )
+
+
+def test_materialize_rejects_unsigned_later_phase_predecessor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, output, _ = (
+        _private_github_capture_inputs(tmp_path)
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    predecessor = _write_deployment_root(
+        tmp_path,
+        command="unsigned-later-node",
+    )
+    with pytest.raises(gate.GateHoldError, match="predecessor is invalid"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+                phase="post-0010",
+            )
+        )
+
+
+def test_materialize_rejects_minimal_self_hashed_acceptance_predecessor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, output, _ = (
+        _private_github_capture_inputs(tmp_path)
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    minimal = gate.with_receipt_sha(
+        {
+            "schema": "release-chain-receipt.v1",
+            "command": "aggregate",
+            "reviewed_sha": "a" * 40,
+            "approved_plan_sha256": "b" * 64,
+            "activation_nonce": "11111111-1111-4111-8111-111111111111",
+            "accepted": True,
+            "terminal_for_attempt": True,
+            "retry_permitted": False,
+        }
+    )
+    predecessor = tmp_path / "minimal-aggregate.json"
+    _ = predecessor.write_text(json.dumps(minimal), encoding="utf-8")
+    with pytest.raises(gate.GateHoldError, match="predecessor is invalid"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+                phase="acceptance",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("attempt", True),
+        ("enum_residue", True),
+        ("backup_sha256", None),
+    ],
+)
+def test_materialize_rejects_unsafe_bootstrap_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: gate.JsonValue,
+) -> None:
+    observation, raw_response, screenshot, output, _ = (
+        _private_github_capture_inputs(tmp_path)
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    predecessor = _write_deployment_root(tmp_path, command="bootstrap-verify")
+    document = gate.load_json(predecessor)
+    document[field] = value
+    _ = predecessor.write_text(json.dumps(document), encoding="utf-8")
+    with pytest.raises(gate.GateHoldError, match="predecessor is invalid"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+                phase="post-0010",
+            )
+        )
+
+
+def test_materialize_provider_capture_rejects_deployment_root_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private-repository-id-sentinel")
+    predecessor = _write_deployment_root(tmp_path, plan_sha="c" * 64)
+
+    with pytest.raises(gate.GateHoldError, match="predecessor binding mismatch"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+            )
+        )
+
+
+def test_materialize_provider_capture_rejects_extra_or_unofficial_observation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation_path, raw_response, screenshot, output, observation = (
+        _private_github_capture_inputs(tmp_path)
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    predecessor = _write_deployment_root(tmp_path)
+    observation["protected_account_id"] = "must-not-pass"
+    _ = observation_path.write_text(json.dumps(observation), encoding="utf-8")
+    observation_path.chmod(0o600)
+    with pytest.raises(gate.GateHoldError, match="schema is not closed"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation_path,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+            )
+        )
+    del observation["protected_account_id"]
+    observation["source_url"] = "https://example.com/private"
+    _ = observation_path.write_text(json.dumps(observation), encoding="utf-8")
+    response_document = cast(
+        "gate.JsonObject",
+        json.loads(raw_response.read_text(encoding="utf-8")),
+    )
+    response_document["observation_sha256"] = gate.sha256_hex(
+        gate.canonical_bytes(observation)
+    )
+    _ = raw_response.write_text(json.dumps(response_document), encoding="utf-8")
+    observation_path.chmod(0o600)
+    raw_response.chmod(0o600)
+    with pytest.raises(gate.GateHoldError, match="URL is not official"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation_path,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=predecessor,
+            )
+        )
+
+
+def test_materialize_provider_capture_rejects_unrelated_official_response(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, _, document = (
+        _private_github_capture_inputs(tmp_path)
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    document["paid_enabled"] = True
+    _ = observation.write_text(json.dumps(document), encoding="utf-8")
+    observation.chmod(0o600)
+    with pytest.raises(gate.GateHoldError, match="does not derive observation"):
+        _ = gate.materialize_provider_capture(
+            provider="github",
+            observation_path=observation,
+            raw_response_path=raw_response,
+            screenshot_path=screenshot,
+            identity_envs=("GITHUB_REPOSITORY_ID",),
+        )
+
+
+def test_materialize_provider_capture_rejects_unsafe_private_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, _, _ = _private_github_capture_inputs(
+        tmp_path
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+
+    if os.name == "nt":
+        monkeypatch.setattr(
+            free_tier_captures,
+            "_windows_acl_owner_only",
+            lambda _path: False,
+        )
+        message = "Windows ACL"
+    else:
+        observation.chmod(0o640)
+        message = "POSIX ownership or mode"
+    with pytest.raises(gate.GateHoldError, match=message):
+        _ = gate.materialize_provider_capture(
+            provider="github",
+            observation_path=observation,
+            raw_response_path=raw_response,
+            screenshot_path=screenshot,
+            identity_envs=("GITHUB_REPOSITORY_ID",),
+        )
+
+
+def test_materialize_provider_capture_rejects_existing_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    _ = output.write_text("existing-private-alias", encoding="utf-8")
+    with pytest.raises(gate.GateHoldError, match="output path is unsafe"):
+        _ = gate.main(
+            _materialize_argv(
+                observation=observation,
+                raw_response=raw_response,
+                screenshot=screenshot,
+                output=output,
+                predecessor=_write_deployment_root(tmp_path),
+            )
+        )
 
 
 def test_fixture_is_exactly_4800_distinct_rows_and_60_mib() -> None:
@@ -157,11 +703,11 @@ def test_measure_production_query_is_aggregate_read_only_and_unsampled() -> None
     assert "select body" not in joined
 
 
-def test_provider_capture_rejects_identity_mismatch(
+def test_provider_capture_rejects_direct_unmaterialized_import(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Given: a redacted capture bound to a different protected identity.
+    # Given: a hand-authored redacted capture without a root-bound materialization.
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "expected")
     capture: gate.JsonObject = {
         "schema": "free-tier.provider-capture.v1",
@@ -184,8 +730,8 @@ def test_provider_capture_rejects_identity_mismatch(
     capture_path = tmp_path / "capture.json"
     _ = capture_path.write_text(json.dumps(capture), encoding="utf-8")
 
-    # When / Then: import fails before producing public evidence.
-    with pytest.raises(gate.GateHoldError, match="identity mismatch"):
+    # When / Then: import fails before trusting any hand-authored fields.
+    with pytest.raises(gate.GateHoldError, match="deployment root receipt"):
         _ = gate.import_provider_capture(
             provider="github",
             input_path=capture_path,

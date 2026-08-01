@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from scripts.release_rollback_harness_models import MatrixCommand
 
 REPOSITORY: Final = "63amg0010-cpu/prediction-market-monitor"
-TEAM: Final = "63amg0010-5358-projects"
+TEAM: Final = "63amg0010-5358s-projects"
 CLI: Final = ("npx", "--yes", "vercel@51.7.0")
 PLAN_SHA: Final = "0" * 64
 NONCE: Final = "00000000-0000-4000-8000-000000000000"

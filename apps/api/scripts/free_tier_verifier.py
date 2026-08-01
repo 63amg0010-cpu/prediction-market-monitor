@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -30,12 +31,14 @@ from apps.api.scripts.free_tier_domain import (
     sha256_hex,
     with_receipt_sha,
 )
+from apps.api.scripts.release_evidence_contracts import PRE_0010_KINDS
 
 type Args = dict[str, str | tuple[str, ...] | bool]
 MAX_CAPTURE_AGE = timedelta(hours=2)
 CAPTURE_MAX_AGE_SECONDS = 7_200
 INSTRUMENTED_HTTP_CALLS = 2
 PAGE_REQUEST_EQUIVALENT = 10_000
+SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 MANIFEST_FIELDS = frozenset(
     {
         "schema",
@@ -148,6 +151,94 @@ def require_measurement_contract(
         raise GateHoldError("Production measurement is sampled")
 
 
+def require_pre_0010_join(  # noqa: PLR0913
+    predecessor: JsonObject,
+    manifest: JsonObject,
+    measurements: JsonObject,
+    production: JsonObject,
+    captures: list[JsonObject],
+    imports: list[JsonObject],
+    hashes: list[JsonObject],
+    expected_sha: str,
+    expected_plan_sha256: str,
+    activation_nonce: str,
+) -> None:
+    """Bind all seven consumed pre-0010 inputs to one evidence join."""
+    branch_kinds = predecessor.get("branch_kinds")
+    input_hashes = predecessor.get("branch_input_sha256s")
+    receipt_hashes = predecessor.get("branch_receipt_sha256s")
+    expected_kinds = list(PRE_0010_KINDS)
+    if (
+        predecessor.get("command") != "evidence-join"
+        or branch_kinds != expected_kinds
+        or not isinstance(input_hashes, dict)
+        or not isinstance(receipt_hashes, dict)
+        or set(input_hashes) != set(PRE_0010_KINDS)
+        or set(receipt_hashes) != set(PRE_0010_KINDS)
+        or any(
+            not isinstance(value, str)
+            or SHA256_PATTERN.fullmatch(value) is None
+            for value in receipt_hashes.values()
+        )
+    ):
+        raise GateHoldError("pre-0010 evidence join is incomplete")
+    expected_inputs = {
+        "local-measurement": sha256_hex(canonical_bytes(measurements)),
+        "quota-manifest": sha256_hex(canonical_bytes(manifest)),
+        "github-capture": sha256_hex(canonical_bytes(captures[0])),
+        "vercel-api-capture": sha256_hex(canonical_bytes(captures[1])),
+        "vercel-web-capture": sha256_hex(canonical_bytes(captures[2])),
+        "supabase-capture": sha256_hex(canonical_bytes(captures[3])),
+        "production-measurement": sha256_hex(canonical_bytes(production)),
+    }
+    if input_hashes != expected_inputs:
+        raise GateHoldError("pre-0010 evidence join input hash mismatch")
+    if len(imports) != len(PRE_0010_KINDS) or len(hashes) != len(PRE_0010_KINDS):
+        raise GateHoldError("pre-0010 evidence imports are incomplete")
+    actual_receipts: dict[str, str] = {}
+    import_fields = {
+        "schema_version",
+        "command",
+        "kind",
+        "reviewed_sha",
+        "approved_plan_sha256",
+        "activation_nonce",
+        "input_sha256",
+        "content_addressed_path",
+        "accepted",
+        "predecessor_receipt_sha256",
+    }
+    hash_fields = {"schema_version", "command", "input_sha256", "accepted"}
+    for kind, imported, hashed in zip(
+        PRE_0010_KINDS, imports, hashes, strict=True
+    ):
+        input_sha = expected_inputs[kind]
+        content_path = Path(str(imported.get("content_addressed_path", "")))
+        if (
+            set(imported) != import_fields
+            or imported.get("command") != "evidence-import"
+            or imported.get("accepted") is not True
+            or imported.get("kind") != kind
+            or imported.get("input_sha256") != input_sha
+            or imported.get("reviewed_sha") != expected_sha
+            or imported.get("approved_plan_sha256") != expected_plan_sha256
+            or imported.get("activation_nonce") != activation_nonce
+            or content_path.parent.name != kind
+            or content_path.name != f"{input_sha}.json"
+            or set(hashed) != hash_fields
+            or hashed.get("schema_version") != 1
+            or hashed.get("command") != "canonical-hash"
+            or hashed.get("accepted") is not True
+            or hashed.get("input_sha256") != input_sha
+            or imported.get("predecessor_receipt_sha256")
+            != sha256_hex(canonical_bytes(hashed))
+        ):
+            raise GateHoldError("pre-0010 evidence import mismatch")
+        actual_receipts[kind] = sha256_hex(canonical_bytes(imported))
+    if receipt_hashes != actual_receipts:
+        raise GateHoldError("pre-0010 evidence import receipt mismatch")
+
+
 def _provider_capture_paths(values: Args) -> tuple[str, ...]:
     captures = values.get("provider-capture", ())
     if not isinstance(captures, tuple) or len(captures) != len(PROVIDERS):
@@ -192,7 +283,7 @@ def database_time(database_url: str) -> datetime:
     return anyio.run(db_now, database_url)
 
 
-def verify_command(values: Args) -> JsonObject:  # noqa: C901
+def verify_command(values: Args) -> JsonObject:  # noqa: C901, PLR0915
     """Verify current captures against one database time and strict ratios."""
     expected_sha = _string(values, "expected-sha")
     environment_name = _string(values, "database-url-env")
@@ -216,6 +307,26 @@ def verify_command(values: Args) -> JsonObject:  # noqa: C901
         require_content_addressed(document, label)
     require_measurement_contract(manifest, measurements, production)
     phase = _phase(values)
+    if phase == "pre-0010":
+        predecessor = load_json(Path(_string(values, "predecessor-receipt")))
+        import_paths = values.get("evidence-import", ())
+        hash_paths = values.get("evidence-hash", ())
+        if not isinstance(import_paths, tuple) or not isinstance(hash_paths, tuple):
+            raise GateHoldError("--evidence-import requires exactly seven imports")
+        imports = [load_json(Path(path)) for path in import_paths]
+        hashes = [load_json(Path(path)) for path in hash_paths]
+        require_pre_0010_join(
+            predecessor,
+            manifest,
+            measurements,
+            production,
+            documents[3:],
+            imports,
+            hashes,
+            _string(values, "expected-sha"),
+            _string(values, "expected-plan-sha256"),
+            _string(values, "activation-nonce"),
+        )
     if manifest.get("phase") != phase:
         raise GateHoldError("quota manifest phase mismatch")
     _require_fresh(production, now)

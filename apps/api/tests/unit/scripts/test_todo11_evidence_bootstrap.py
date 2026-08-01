@@ -28,6 +28,7 @@ from .release_evidence_test_support import (
     artifacts,
     base_receipt,
     evidence_graph,
+    quota_manifest,
     review_record,
 )
 
@@ -72,11 +73,22 @@ def test_content_addressed_graph_and_credential_free_no_spend(
     plan = sha256(plan_bytes).hexdigest()
     root = base_receipt("deployment-prestate", plan, None)
     captures, local, production = artifacts(plan)
-    joined = evidence_graph(root, [local, *captures, production], tmp_path)
+    manifest = quota_manifest(plan)
+    joined = evidence_graph(root, [local, manifest, *captures, production], tmp_path)
+    assert joined["branch_kinds"] == [
+        "local-measurement",
+        "quota-manifest",
+        "github-capture",
+        "vercel-api-capture",
+        "vercel-web-capture",
+        "supabase-capture",
+        "production-measurement",
+    ]
     free_tier = {
         **base_receipt("free-tier-pre-0010", plan, receipt_sha256(joined)),
         "phase": "pre-0010",
         "db_now": "2026-07-29T01:02:03Z",
+        "manifest_sha256": sha256(canonical_bytes(manifest)).hexdigest(),
         "measurements_sha256": sha256(canonical_bytes(local)).hexdigest(),
         "dimensions": [
             {
@@ -95,6 +107,8 @@ def test_content_addressed_graph_and_credential_free_no_spend(
 
     def run_no_spend(
         capture_values: Sequence[Mapping[str, object]],
+        *,
+        evidence_join: Mapping[str, object] = joined,
     ) -> dict[str, object]:
         return no_spend_preflight(
             review_record=review_record(plan_bytes),
@@ -104,7 +118,7 @@ def test_content_addressed_graph_and_credential_free_no_spend(
             expected_sha=SHA,
             activation_nonce=NONCE,
             deployment_prestate=root,
-            evidence_join_receipt=joined,
+            evidence_join_receipt=evidence_join,
             provider_captures=capture_values,
             production_measurements=production,
             free_tier_result=free_tier,
@@ -121,6 +135,24 @@ def test_content_addressed_graph_and_credential_free_no_spend(
     paid[1]["paid_enabled"] = True
     with pytest.raises(EvidenceHoldError, match="provider_spend_enabled"):
         _ = run_no_spend(paid)
+    missing_manifest = deepcopy(joined)
+    missing_manifest["branch_kinds"] = [
+        "local-measurement",
+        "github-capture",
+        "vercel-api-capture",
+        "vercel-web-capture",
+        "supabase-capture",
+        "production-measurement",
+    ]
+    for field in ("branch_input_sha256s", "branch_receipt_sha256s"):
+        branches = missing_manifest[field]
+        assert isinstance(branches, dict)
+        del branches["quota-manifest"]
+    with pytest.raises(
+        EvidenceHoldError,
+        match="pre_0010_evidence_graph_rejected",
+    ):
+        _ = run_no_spend(captures, evidence_join=missing_manifest)
 
 
 def test_public_attestation_is_closed_and_secret_upload_is_stdin_only() -> None:

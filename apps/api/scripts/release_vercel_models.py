@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 from uuid import UUID
 
-TEAM_SLUG = "63amg0010-5358-projects"
+TEAM_SLUG = "63amg0010-5358s-projects"
 CLI_VERSION = "51.7.0"
 PROJECTS = {
     "api": ("prediction-monitor-api", "VERCEL_API_PROJECT_ID", "apps/api"),

@@ -30,7 +30,7 @@ EVIDENCE_KINDS = (
     "supabase-capture",
     "production-measurement",
 )
-PRE_0010_KINDS = tuple(kind for kind in EVIDENCE_KINDS if kind != "quota-manifest")
+PRE_0010_KINDS = EVIDENCE_KINDS
 PROVIDERS = ("github", "vercel-api", "vercel-web", "supabase")
 PROVIDER_PLANS = {
     "github": "public-standard",

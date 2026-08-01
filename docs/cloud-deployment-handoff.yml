@@ -76,8 +76,8 @@ supabase:
     - preview
     - production
   runtime_connection: transaction_pooler
-  migration_connection: direct_async_sqlalchemy
-  backup_connection: direct_native_libpq
+  migration_connection: direct_or_supavisor_session_5432_async_sqlalchemy
+  backup_connection: matching_direct_or_supavisor_session_5432_native_libpq
 health:
   healthy:
     http_status: 200

@@ -16,7 +16,7 @@ if config.config_file_name is not None and config.file_config.has_section("logge
 
 
 class MigrationDatabaseUrlMissingError(RuntimeError):
-    """Raised when an online migration has no direct database URL."""
+    """Raised when an online migration has no direct/session database URL."""
 
     @override
     def __str__(self) -> str:
@@ -70,7 +70,7 @@ async def _run_async_migrations(url: str) -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations through the configured direct async PostgreSQL URL."""
+    """Run through the configured direct or Supavisor session-mode async URL."""
     url = _database_url()
     if url is None:
         raise MigrationDatabaseUrlMissingError

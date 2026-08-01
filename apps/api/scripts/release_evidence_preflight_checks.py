@@ -113,6 +113,7 @@ def require_graph_content(
         "supabase-capture": _sha(captures[3]),
         "production-measurement": _sha(production),
         "local-measurement": free_tier.get("measurements_sha256"),
+        "quota-manifest": free_tier.get("manifest_sha256"),
     }
     if expected != hashes:
         raise EvidenceHoldError("evidence_graph_content_mismatch")

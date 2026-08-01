@@ -18,10 +18,13 @@ from apps.api.scripts.free_tier_domain import (
     GateHoldError,
     JsonObject,
     JsonValue,
+    canonical_bytes,
     load_json,
+    sha256_hex,
     with_receipt_sha,
     write_json,
 )
+from apps.api.scripts.release_evidence_contracts import PRE_0010_KINDS
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "free-tier"
 REVIEWED_SHA = "a" * 40
@@ -59,6 +62,61 @@ def _dimensions(captures: tuple[JsonObject, ...]) -> list[JsonObject]:
     return dimensions
 
 
+def _pre_0010_hashes(bundle: EvidenceBundle) -> tuple[JsonObject, ...]:
+    documents = (
+        bundle.local,
+        bundle.manifest,
+        *bundle.captures,
+        bundle.production,
+    )
+    return tuple(
+        {
+            "schema_version": 1,
+            "command": "canonical-hash",
+            "input_sha256": sha256_hex(canonical_bytes(document)),
+            "accepted": True,
+        }
+        for document in documents
+    )
+
+
+def _pre_0010_imports(bundle: EvidenceBundle) -> tuple[JsonObject, ...]:
+    hashes = _pre_0010_hashes(bundle)
+    return tuple(
+        {
+            "schema_version": 1,
+            "command": "evidence-import",
+            "kind": kind,
+            "reviewed_sha": REVIEWED_SHA,
+            "approved_plan_sha256": "b" * 64,
+            "activation_nonce": "11111111-1111-4111-8111-111111111111",
+            "input_sha256": str(hashed["input_sha256"]),
+            "content_addressed_path": (
+                f"pre-0010/imports/{kind}/{hashed['input_sha256']}.json"
+            ),
+            "accepted": True,
+            "predecessor_receipt_sha256": sha256_hex(canonical_bytes(hashed)),
+        }
+        for kind, hashed in zip(PRE_0010_KINDS, hashes, strict=True)
+    )
+
+
+def _pre_0010_join(bundle: EvidenceBundle) -> JsonObject:
+    imports = _pre_0010_imports(bundle)
+    return {
+        "command": "evidence-join",
+        "branch_kinds": list(PRE_0010_KINDS),
+        "branch_input_sha256s": {
+            str(imported["kind"]): str(imported["input_sha256"])
+            for imported in imports
+        },
+        "branch_receipt_sha256s": {
+            str(imported["kind"]): sha256_hex(canonical_bytes(imported))
+            for imported in imports
+        },
+    }
+
+
 @pytest.fixture
 def evidence_bundle() -> EvidenceBundle:
     captures = tuple(
@@ -89,15 +147,20 @@ def evidence_bundle() -> EvidenceBundle:
     return EvidenceBundle(manifest, local, production, captures)
 
 
-def _execute(
+def _execute(  # noqa: PLR0913
     bundle: EvidenceBundle,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    predecessor: JsonObject | None = None,
+    imports_override: tuple[JsonObject, ...] | None = None,
+    hashes_override: tuple[JsonObject, ...] | None = None,
 ) -> JsonObject:
     paths = {
         "manifest": tmp_path / "manifest.json",
         "measurements": tmp_path / "local.json",
         "production-measurements": tmp_path / "production.json",
+        "predecessor-receipt": tmp_path / "evidence-join.json",
     }
     for label, document in (
         ("manifest", bundle.manifest),
@@ -110,6 +173,35 @@ def _execute(
         path = tmp_path / f"capture-{index}.json"
         write_json(path, capture)
         capture_paths.append(str(path))
+    import_paths: list[str] = []
+    imports = (
+        imports_override
+        if imports_override is not None
+        else _pre_0010_imports(bundle)
+        if len(bundle.captures) == 4
+        else ()
+    )
+    for index, imported in enumerate(imports):
+        path = tmp_path / f"evidence-import-{index}.json"
+        write_json(path, imported)
+        import_paths.append(str(path))
+    hash_paths: list[str] = []
+    hashes = (
+        hashes_override
+        if hashes_override is not None
+        else _pre_0010_hashes(bundle)
+        if len(bundle.captures) == 4
+        else ()
+    )
+    for index, hashed in enumerate(hashes):
+        path = tmp_path / f"evidence-hash-{index}.json"
+        write_json(path, hashed)
+        hash_paths.append(str(path))
+    default_join = _pre_0010_join(bundle) if len(bundle.captures) == 4 else {}
+    write_json(
+        paths["predecessor-receipt"],
+        default_join if predecessor is None else predecessor,
+    )
 
     def current_database_time(_database_url: str) -> datetime:
         return DB_NOW
@@ -123,7 +215,12 @@ def _execute(
             "measurements": str(paths["measurements"]),
             "production-measurements": str(paths["production-measurements"]),
             "provider-capture": tuple(capture_paths),
+            "evidence-hash": tuple(hash_paths),
+            "evidence-import": tuple(import_paths),
+            "predecessor-receipt": str(paths["predecessor-receipt"]),
             "expected-sha": REVIEWED_SHA,
+            "expected-plan-sha256": "b" * 64,
+            "activation-nonce": "11111111-1111-4111-8111-111111111111",
         }
     )
 
@@ -138,6 +235,9 @@ def test_verify_accepts_exact_fresh_four_provider_capture_set(
     result = _execute(evidence_bundle, tmp_path, monkeypatch)
     # Then: every capture-derived dimension passes the strict threshold.
     assert result["accepted"] is True
+    assert result["manifest_sha256"] == sha256_hex(
+        canonical_bytes(evidence_bundle.manifest)
+    )
     dimensions = result["dimensions"]
     assert isinstance(dimensions, list)
     assert len(dimensions) == 19
@@ -158,6 +258,74 @@ def test_verify_rejects_missing_provider_capture(
     # When/Then: verification fails before evaluating quota arithmetic.
     with pytest.raises(GateHoldError, match="exactly four"):
         _ = _execute(bundle, tmp_path, monkeypatch)
+
+
+def test_verify_rejects_manifest_not_joined_by_exact_hash(
+    evidence_bundle: EvidenceBundle,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    predecessor = _pre_0010_join(evidence_bundle)
+    input_hashes = predecessor["branch_input_sha256s"]
+    assert isinstance(input_hashes, dict)
+    input_hashes["quota-manifest"] = "0" * 64
+    with pytest.raises(GateHoldError, match="join input hash mismatch"):
+        _ = _execute(
+            evidence_bundle,
+            tmp_path,
+            monkeypatch,
+            predecessor=predecessor,
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "kind"),
+    [
+        ("branch_input_sha256s", "vercel-web-capture"),
+        ("branch_receipt_sha256s", "github-capture"),
+    ],
+)
+def test_verify_rejects_provider_capture_missing_from_join_maps(
+    evidence_bundle: EvidenceBundle,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    kind: str,
+) -> None:
+    predecessor = _pre_0010_join(evidence_bundle)
+    hashes = predecessor[field]
+    assert isinstance(hashes, dict)
+    del hashes[kind]
+    with pytest.raises(GateHoldError, match="join is incomplete"):
+        _ = _execute(
+            evidence_bundle,
+            tmp_path,
+            monkeypatch,
+            predecessor=predecessor,
+        )
+
+
+def test_verify_rejects_forged_evidence_import_contract(
+    evidence_bundle: EvidenceBundle,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    imports = list(_pre_0010_imports(evidence_bundle))
+    forged = deepcopy(imports[2])
+    forged["content_addressed_path"] = "pre-0010/imports/github-capture/receipt.json"
+    imports[2] = forged
+    predecessor = _pre_0010_join(evidence_bundle)
+    receipt_hashes = predecessor["branch_receipt_sha256s"]
+    assert isinstance(receipt_hashes, dict)
+    receipt_hashes["github-capture"] = sha256_hex(canonical_bytes(forged))
+    with pytest.raises(GateHoldError, match="evidence import mismatch"):
+        _ = _execute(
+            evidence_bundle,
+            tmp_path,
+            monkeypatch,
+            predecessor=predecessor,
+            imports_override=tuple(imports),
+        )
 
 
 def test_verify_rejects_manifest_operand_substitution(

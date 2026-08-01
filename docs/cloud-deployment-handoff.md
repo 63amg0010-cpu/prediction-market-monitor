@@ -13,7 +13,7 @@ Status: **beginner handoff; live Production and 30-day acceptance remain HOLD**
 | 항목 | 고정값/역할 |
 |---|---|
 | GitHub repository | `63amg0010-cpu/prediction-market-monitor`, public |
-| Vercel team | `63amg0010-5358-projects` |
+| Vercel team | `63amg0010-5358s-projects` |
 | Vercel API project | `prediction-monitor-api`, Root Directory `apps/api` |
 | Vercel Web project | `prediction-monitor-web`, Root Directory `apps/web` |
 | Supabase | Preview와 Production을 분리한 Free project |
@@ -66,10 +66,10 @@ Public repository이므로 commit/log/cache/attestation/artifact에는 schema-cl
 Preview와 Production Free project를 분리합니다. Free plan, paid/overage/add-on disabled 상태를 fresh provider capture로 증명하지 못하면 `HOLD`입니다.
 
 - Runtime `DATABASE_URL`: transaction pooler.
-- Alembic `MIGRATION_DATABASE_URL`: direct `postgresql+asyncpg://`.
-- Native backup/restore URL: `PG_DUMP_DATABASE_URL`와 `PG_RESTORE_DATABASE_URL`, direct `postgresql://`.
+- Alembic `MIGRATION_DATABASE_URL`: direct 또는 IPv4 GitHub runner용 Supavisor session mode(5432) `postgresql+asyncpg://`.
+- Native backup/restore URL: `PG_DUMP_DATABASE_URL`와 `PG_RESTORE_DATABASE_URL`, 같은 direct/session-mode(5432) 호스트의 `postgresql://`.
 
-Pooler URL로 migration하지 않고 async-driver URL을 `pg_dump`/`pg_restore`에 넘기지 않습니다. Production measurement는 `free_tier_gate.py measure-production --read-only`만 사용하며 row text를 내보내지 않습니다.
+Supavisor transaction mode(6543)로 migration하지 않습니다. IPv6 direct 연결을 사용할 수 없는 GitHub runner에서는 공식 대안인 session mode(5432)를 사용합니다. async-driver URL을 `pg_dump`/`pg_restore`에 넘기지 않습니다. Production measurement는 `free_tier_gate.py measure-production --read-only`만 사용하며 row text를 내보내지 않습니다.
 
 Supabase connector/API lookup은 항상 비어 있지 않은 `SUPABASE_PROJECT_ID`/`SUPABASE_ORG_ID` 환경 값을 사용합니다. Actual ID를 command text나 receipt에 복사하지 않습니다.
 

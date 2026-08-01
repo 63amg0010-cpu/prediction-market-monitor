@@ -137,20 +137,12 @@ jobs:
           DEFER_RESERVATION_CLAIM: "true"
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install --yes postgresql-client
-      - name: Validate database URL drivers without disclosure
-        shell: bash
-        run: |
-          case "$MIGRATION_DATABASE_URL" in
-            postgresql+asyncpg://*) ;;
-            *) echo "MIGRATION_DATABASE_URL has an invalid driver" >&2; exit 1 ;;
-          esac
-          case "$PG_DUMP_DATABASE_URL" in
-            postgresql://*|postgres://*) ;;
-            *) echo "PG_DUMP_DATABASE_URL has an invalid driver" >&2; exit 1 ;;
-          esac
+      - name: Validate direct or session-mode database URLs without disclosure
+        run: uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-database-urls
         env:
           MIGRATION_DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
           PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
+          PG_RESTORE_DATABASE_URL: ${{ secrets.PG_RESTORE_DATABASE_URL }}
       - name: Validate repository migration head
         run: |
           set -euo pipefail

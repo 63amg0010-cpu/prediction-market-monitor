@@ -30,6 +30,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from apps.api.scripts.free_tier_captures import (
     import_provider_capture,
+    materialize_provider_capture,
+    require_materialization_predecessor,
     validate_verified_capture,
 )
 from apps.api.scripts.free_tier_db import (
@@ -49,6 +51,7 @@ from apps.api.scripts.free_tier_domain import (
     JsonObject,
     canonical_bytes,
     dimension_result,
+    load_json,
     search_projection,
     sha256_hex,
     with_receipt_sha,
@@ -74,6 +77,7 @@ __all__ = [
     "fixture_rows",
     "import_provider_capture",
     "main",
+    "materialize_provider_capture",
     "page_bound_for_window",
     "production_statements",
     "search_projection",
@@ -86,6 +90,7 @@ __all__ = [
 class FreeTierCommand(StrEnum):
     CAPTURE_TEMPLATE = "capture-template"
     IMPORT_PROVIDER_CAPTURE = "import-provider-capture"
+    MATERIALIZE_PROVIDER_CAPTURE = "materialize-provider-capture"
     MEASURE_LOCAL = "measure-local"
     MEASURE_PRODUCTION = "measure-production"
     VERIFY = "verify"
@@ -95,7 +100,12 @@ def _arguments(argv: list[str]) -> tuple[FreeTierCommand, Args]:
     if not argv:
         raise GateHoldError("a subcommand is required")
     values: Args = {}
-    repeated = {"identity-env", "provider-capture"}
+    repeated = {
+        "evidence-hash",
+        "evidence-import",
+        "identity-env",
+        "provider-capture",
+    }
     index = 1
     while index < len(argv):
         flag = argv[index]
@@ -181,10 +191,9 @@ def _template(values: Args) -> JsonObject:
     )
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None) -> int:  # noqa: C901
     """Run one free-tier evidence subcommand."""
     command, values = _arguments(sys.argv[1:] if argv is None else argv)
-    expected_sha = _string(values, "expected-sha")
     match command:
         case FreeTierCommand.CAPTURE_TEMPLATE:
             receipt = _template(values)
@@ -192,18 +201,95 @@ def main(argv: list[str] | None = None) -> int:
             identities = values.get("identity-env", ())
             if not isinstance(identities, tuple):
                 raise GateHoldError("--identity-env must be repeated")
+            predecessor = load_json(Path(_string(values, "predecessor-receipt")))
             receipt = import_provider_capture(
                 provider=_string(values, "provider"),
                 input_path=Path(_string(values, "input")),
                 identity_envs=identities,
-                expected_sha=expected_sha,
+                expected_sha=_string(values, "expected-sha"),
+                expected_plan_sha256=_string(values, "expected-plan-sha256"),
+                activation_nonce=_string(values, "activation-nonce"),
+                predecessor=predecessor,
                 phase=_phase(values),
             )
             body = {
                 key: value for key, value in receipt.items() if key != "receipt_sha256"
             }
             receipt = with_receipt_sha({**body, **_chain_fields(values)})
+        case FreeTierCommand.MATERIALIZE_PROVIDER_CAPTURE:
+            required_values = {
+                "provider",
+                "observation",
+                "raw-response",
+                "screenshot",
+                "identity-env",
+                "expected-sha",
+                "expected-plan-sha256",
+                "activation-nonce",
+                "predecessor-receipt",
+                "json-out",
+            }
+            value_keys = frozenset(values)
+            accepted_keys = {
+                frozenset(required_values),
+                frozenset((*required_values, "phase")),
+            }
+            if value_keys not in accepted_keys:
+                raise GateHoldError(
+                    "materialize-provider-capture arguments are not schema-closed"
+                )
+            identities = values.get("identity-env", ())
+            if not isinstance(identities, tuple):
+                raise GateHoldError("--identity-env must be repeated")
+            observation_path = Path(_string(values, "observation"))
+            raw_response_path = Path(_string(values, "raw-response"))
+            screenshot_path = Path(_string(values, "screenshot"))
+            output_path = Path(_string(values, "json-out"))
+            private_paths = {
+                path.resolve(strict=False)
+                for path in (
+                    observation_path,
+                    raw_response_path,
+                    screenshot_path,
+                )
+            }
+            if (
+                output_path.exists()
+                or output_path.is_symlink()
+                or output_path.resolve(strict=False) in private_paths
+            ):
+                raise GateHoldError("redacted output path is unsafe")
+            predecessor = load_json(Path(_string(values, "predecessor-receipt")))
+            phase = _phase(values)
+            predecessor_sha = require_materialization_predecessor(
+                predecessor,
+                phase=phase,
+                expected_sha=_string(values, "expected-sha"),
+                expected_plan_sha256=_string(values, "expected-plan-sha256"),
+                activation_nonce=_string(values, "activation-nonce"),
+            )
+            capture = materialize_provider_capture(
+                provider=_string(values, "provider"),
+                observation_path=observation_path,
+                raw_response_path=raw_response_path,
+                screenshot_path=screenshot_path,
+                identity_envs=identities,
+            )
+            receipt = with_receipt_sha(
+                {
+                    "schema": "free-tier.provider-capture-materialized.v1",
+                    "capture": capture,
+                    "reviewed_sha": _string(values, "expected-sha"),
+                    "phase": phase,
+                    "approved_plan_sha256": _string(
+                        values, "expected-plan-sha256"
+                    ),
+                    "activation_nonce": _string(values, "activation-nonce"),
+                    "predecessor_receipt_sha256": predecessor_sha,
+                }
+            )
         case FreeTierCommand.MEASURE_LOCAL:
+            expected_sha = _string(values, "expected-sha")
             manifest = Path(_string(values, "command-manifest"))
             raw = anyio.run(
                 local_measurement,
@@ -220,6 +306,7 @@ def main(argv: list[str] | None = None) -> int:
                 }
             )
         case FreeTierCommand.MEASURE_PRODUCTION:
+            expected_sha = _string(values, "expected-sha")
             if values.get("read-only") is not True:
                 raise GateHoldError("measure-production requires --read-only")
             raw = anyio.run(

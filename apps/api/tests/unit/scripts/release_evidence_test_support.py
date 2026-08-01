@@ -25,6 +25,7 @@ NOW = datetime(2026, 7, 29, 1, 2, 3, tzinfo=UTC)
 PLAN_PATH = ".omo/plans/fresh-multi-source-search.md"
 KINDS = (
     "local-measurement",
+    "quota-manifest",
     "github-capture",
     "vercel-api-capture",
     "vercel-web-capture",
@@ -139,12 +140,23 @@ def artifacts(
     return captures, local, production
 
 
+def quota_manifest(plan: str) -> JsonObject:
+    """Create the exact pre-0010 quota-manifest evidence leaf."""
+    return {
+        "schema": "free-tier.quota-manifest.v1",
+        "phase": "pre-0010",
+        "reviewed_sha": SHA,
+        "approved_plan_sha256": plan,
+        "activation_nonce": str(NONCE),
+    }
+
+
 def evidence_graph(
     root: Mapping[str, object],
     documents: list[Mapping[str, object]],
     tmp_path: Path,
 ) -> JsonObject:
-    """Create all six content-addressed branches and their join."""
+    """Create all seven content-addressed branches and their join."""
     branches: list[JsonObject] = []
     for kind, document in zip(KINDS, documents, strict=True):
         hashed = canonical_hash(document)
@@ -193,5 +205,6 @@ __all__ = (
     "artifacts",
     "base_receipt",
     "evidence_graph",
+    "quota_manifest",
     "review_record",
 )

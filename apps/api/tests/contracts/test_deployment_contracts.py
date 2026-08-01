@@ -193,8 +193,12 @@ def test_cloud_handoff_contract_matches_workflows_and_environment_template() -> 
     assert vercel["ci_project_selection"] == "matrix_vercel_project_id"
     assert vercel["build_output"] == ".vercel/output"
     assert supabase["runtime_connection"] == "transaction_pooler"
-    assert supabase["migration_connection"] == "direct_async_sqlalchemy"
-    assert supabase["backup_connection"] == "direct_native_libpq"
+    assert supabase["migration_connection"] == (
+        "direct_or_supavisor_session_5432_async_sqlalchemy"
+    )
+    assert supabase["backup_connection"] == (
+        "matching_direct_or_supavisor_session_5432_native_libpq"
+    )
     assert acceptance == {
         "consecutive_utc_days": 30,
         "collection_slots": 240,

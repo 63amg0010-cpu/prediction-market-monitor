@@ -198,14 +198,14 @@ def test_matrix_b_stub_argv_is_exact_and_has_no_secret_or_network_token(
         "pull",
         "--environment=production",
         "--scope",
-        "63amg0010-5358-projects",
+        "63amg0010-5358s-projects",
         "--yes",
     ]
     assert by_stage["api-build"][3:5] == ["build", "--prod"]
     assert by_stage["api-deploy"][3:6] == ["deploy", "--prebuilt", "--prod"]
     assert by_stage["api-inspect"][-3:] == [
         "--scope",
-        "63amg0010-5358-projects",
+        "63amg0010-5358s-projects",
         "--json",
     ]
     flattened = json.dumps(commands, sort_keys=True)

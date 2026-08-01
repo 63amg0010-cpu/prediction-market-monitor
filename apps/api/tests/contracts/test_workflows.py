@@ -176,9 +176,8 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
     )
     rendered = yaml.safe_dump(workflow)
     assert "MIGRATION_DATABASE_URL" in rendered
-    assert "postgresql+asyncpg://" in rendered
     assert "PG_DUMP_DATABASE_URL" in rendered
-    assert "postgresql://" in rendered
+    assert "PG_RESTORE_DATABASE_URL" in rendered
     assert "pg_dump --format=custom --no-owner --no-acl" in rendered
     assert '"$PG_DUMP_DATABASE_URL"' in rendered
     validation_commands = "\n".join(
@@ -206,7 +205,15 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
     assert 'downgrade "$TARGET_REVISION"' in operation_command
     assert "upgrade head" not in rendered
     assert "pg_restore" not in rendered
-    assert "PG_RESTORE_DATABASE_URL" not in rendered
+    url_validation = named_steps[
+        "Validate direct or session-mode database URLs without disclosure"
+    ]
+    assert "validate-database-urls" in str(url_validation["run"])
+    assert set(_mapping(url_validation["env"])) == {
+        "MIGRATION_DATABASE_URL",
+        "PG_DUMP_DATABASE_URL",
+        "PG_RESTORE_DATABASE_URL",
+    }
     assert "Roll back failed migration" not in named_steps
     assert "Encrypt and decrypt-test pre-migration backup" in named_steps
     assert "Upload encrypted recovery artifact" in named_steps

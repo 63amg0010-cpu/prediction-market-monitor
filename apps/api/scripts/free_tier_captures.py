@@ -7,9 +7,13 @@ from __future__ import annotations
 
 import os
 import re
+import stat
+import subprocess
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Final, assert_never
+from hashlib import sha256
+from pathlib import Path
+from typing import Final, assert_never, cast
 from urllib.parse import urlsplit
 
 from apps.api.scripts.free_tier_domain import (
@@ -21,6 +25,7 @@ from apps.api.scripts.free_tier_domain import (
     canonical_bytes,
     load_json,
     parse_time,
+    require_receipt_sha,
     require_string,
     sha256_hex,
     with_receipt_sha,
@@ -29,11 +34,14 @@ from apps.api.scripts.free_tier_evidence_contract import (
     CAPTURE_FIELDS,
     DECEMBER,
     DIMENSION_FIELDS,
+    MATERIALIZED_CAPTURE_FIELDS,
     OPTIONAL_CHAIN_FIELDS,
+    PRIVATE_OBSERVATION_FIELDS,
     PROVIDER_DIMENSIONS,
     PROVIDER_HOSTS,
     PROVIDER_PLANS,
     PROVIDER_PROJECTS,
+    PROVIDER_PUBLIC_SOURCE_URLS,
     VERIFIED_FIELDS,
 )
 from apps.api.scripts.free_tier_identities import (
@@ -46,10 +54,11 @@ from apps.api.scripts.free_tier_projection import (
     expected_window_ids,
 )
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 SHA256_PATTERN: Final = re.compile(r"[0-9a-f]{64}")
+PRIVATE_RESPONSE_FIELDS: Final = frozenset(
+    {"schema", "provider", "observation_sha256", "official_payloads"}
+)
+APPROVAL_LAUNCH_COUNT: Final = 2
 
 
 class _WindowKind(StrEnum):
@@ -157,10 +166,10 @@ def _require_official_source(capture: JsonObject, provider: str) -> None:
     if (
         parsed_source.scheme != "https"
         or parsed_source.hostname not in PROVIDER_HOSTS[provider]
+        or source_url != PROVIDER_PUBLIC_SOURCE_URLS[provider]
     ):
         raise GateHoldError("provider quota source URL is not official")
-    if capture.get("source_url_sha256") != sha256_hex(source_url.encode()):
-        raise GateHoldError("provider quota source URL hash mismatch")
+    _ = _require_sha(capture.get("source_url_sha256"), "source_url_sha256")
     for field in (
         "response_sha256",
         "screenshot_sha256",
@@ -224,19 +233,388 @@ def validate_verified_capture(capture: JsonObject) -> tuple[str, list[JsonObject
     return provider, dimensions
 
 
-def import_provider_capture(
+def _windows_acl_owner_only(path: Path) -> bool:
+    """Require a non-inherited full-control DACL for only the current identity."""
+    system_root = Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
+    whoami = system_root / "System32" / "whoami.exe"
+    icacls = system_root / "System32" / "icacls.exe"
+    try:
+        identity = (
+            subprocess.run(  # noqa: S603
+                [str(whoami)],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            .stdout.strip()
+            .lower()
+        )
+        sid_output = subprocess.run(  # noqa: S603
+            [str(whoami), "/user", "/fo", "csv", "/nh"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
+        sid_match = re.search(r"S-\d(?:-\d+)+", sid_output, re.IGNORECASE)
+        acl_output = subprocess.run(  # noqa: S603
+            [str(icacls), str(path.resolve(strict=True))],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return False
+    allowed = {identity}
+    if sid_match is not None:
+        allowed.add(sid_match.group(0).lower())
+    resolved = str(path.resolve(strict=True))
+    entries: list[tuple[str, str]] = []
+    for index, raw_line in enumerate(acl_output.splitlines()):
+        line = raw_line.strip()
+        if index == 0 and line.lower().startswith(resolved.lower()):
+            line = line[len(resolved) :].strip()
+        match = re.fullmatch(r"(.+?):((?:\([A-Za-z0-9,]+\))+)", line)
+        if match is not None:
+            entries.append((match.group(1).strip().lower(), match.group(2)))
+    return (
+        len(entries) == 1
+        and entries[0][0] in allowed
+        and "(I)" not in entries[0][1]
+        and "(F)" in entries[0][1]
+    )
+
+
+def _require_private_regular_file(path: Path) -> None:
+    if path.is_symlink():
+        raise GateHoldError("private input symlink is forbidden")
+    try:
+        status = path.stat()
+    except OSError as error:
+        raise GateHoldError("private input is unavailable") from error
+    if not stat.S_ISREG(status.st_mode) or status.st_size <= 0:
+        raise GateHoldError("private input must be a nonempty regular file")
+    if os.name == "nt":
+        if not _windows_acl_owner_only(path):
+            raise GateHoldError("private input Windows ACL is not owner-only")
+    else:
+        getuid = getattr(os, "getuid", None)
+        if (
+            getuid is None
+            or status.st_uid != getuid()
+            or bool(status.st_mode & (stat.S_IRWXG | stat.S_IRWXO))
+        ):
+            raise GateHoldError(
+                "private input POSIX ownership or mode is not owner-only"
+            )
+
+
+def _file_sha256(path: Path) -> str:
+    digest = sha256()
+    try:
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+    except OSError as error:
+        raise GateHoldError("private input cannot be hashed") from error
+    return digest.hexdigest()
+
+
+def require_materialization_predecessor(
+    predecessor: JsonObject,
+    *,
+    phase: str,
+    expected_sha: str,
+    expected_plan_sha256: str,
+    activation_nonce: str,
+) -> str:
+    """Validate the exact phase-specific chain node and return its canonical hash."""
+    common = (
+        predecessor.get("accepted") is True
+        and predecessor.get("reviewed_sha") == expected_sha
+        and predecessor.get("approved_plan_sha256") == expected_plan_sha256
+        and predecessor.get("activation_nonce") == activation_nonce
+    )
+    if not common:
+        raise GateHoldError("provider materialization predecessor binding mismatch")
+    command = predecessor.get("command")
+    if phase == "pre-0010":
+        valid = command == "deployment-prestate"
+    elif phase == "post-0010":
+        post_fields = {
+            "schema_version",
+            "command",
+            "attempt",
+            "reviewed_sha",
+            "approved_plan_sha256",
+            "approval_round_id",
+            "approval_launch_sha256s",
+            "activation_nonce",
+            "dispatch_nonce",
+            "run_id",
+            "artifact_sha256",
+            "review_root_sha256",
+            "no_spend_receipt_sha256",
+            "backup_sha256",
+            "state_before",
+            "state_after",
+            "ledger_exists",
+            "manifold_data_exists",
+            "enum_residue",
+            "accepted",
+            "terminal_for_attempt",
+            "retry_permitted",
+            "predecessor_receipt_sha256",
+        }
+        launches = predecessor.get("approval_launch_sha256s")
+        run_id = predecessor.get("run_id")
+        attempt = predecessor.get("attempt")
+        valid = (
+            set(predecessor) == post_fields
+            and predecessor.get("schema_version") == 1
+            and command == "bootstrap-verify"
+            and isinstance(attempt, int)
+            and not isinstance(attempt, bool)
+            and attempt in {1, 2}
+            and predecessor.get("terminal_for_attempt") is True
+            and predecessor.get("retry_permitted") is False
+            and predecessor.get("state_before") == "20260726_0009"
+            and predecessor.get("state_after") == "20260727_0010"
+            and predecessor.get("ledger_exists") is True
+            and predecessor.get("manifold_data_exists") is False
+            and predecessor.get("enum_residue") is False
+            and isinstance(run_id, int)
+            and not isinstance(run_id, bool)
+            and run_id > 0
+            and isinstance(launches, list)
+            and len(launches) == APPROVAL_LAUNCH_COUNT
+            and all(
+                isinstance(value, str) and SHA256_PATTERN.fullmatch(value)
+                for value in (
+                    predecessor.get("approval_round_id"),
+                    *launches,
+                    predecessor.get("artifact_sha256"),
+                    predecessor.get("review_root_sha256"),
+                    predecessor.get("no_spend_receipt_sha256"),
+                    predecessor.get("backup_sha256"),
+                    predecessor.get("predecessor_receipt_sha256"),
+                )
+            )
+        )
+    elif phase == "acceptance":
+        _ = require_receipt_sha(predecessor, "acceptance predecessor")
+        acceptance_fields = {
+            "schema",
+            "command",
+            "reviewed_sha",
+            "approved_plan_sha256",
+            "approval_round_id",
+            "approval_launch_sha256s",
+            "activation_nonce",
+            "dispatch_nonce",
+            "attempt",
+            "database_timestamps",
+            "accepted",
+            "terminal_for_attempt",
+            "retry_permitted",
+            "predecessor_receipt_sha256",
+            "details",
+            "receipt_sha256",
+        }
+        launches = predecessor.get("approval_launch_sha256s")
+        timestamps = predecessor.get("database_timestamps")
+        details = predecessor.get("details")
+        detail_hashes = (
+            (
+                details.get("fan_in_sha256"),
+                details.get("cadence_sha256"),
+                details.get("f4_sha256"),
+            )
+            if isinstance(details, dict)
+            else ()
+        )
+        status = details.get("status") if isinstance(details, dict) else None
+        refresh_sha = (
+            details.get("acceptance_refresh_sha256")
+            if isinstance(details, dict)
+            else None
+        )
+        valid = (
+            set(predecessor) == acceptance_fields
+            and predecessor.get("schema") == "release-chain-receipt.v1"
+            and command == "aggregate"
+            and predecessor.get("dispatch_nonce") is None
+            and predecessor.get("attempt") == 0
+            and predecessor.get("terminal_for_attempt") is True
+            and predecessor.get("retry_permitted") is False
+            and isinstance(launches, list)
+            and len(launches) == APPROVAL_LAUNCH_COUNT
+            and isinstance(timestamps, dict)
+            and set(timestamps) == {"created_at_db"}
+            and isinstance(timestamps.get("created_at_db"), str)
+            and isinstance(details, dict)
+            and set(details)
+            == {
+                "status",
+                "fan_in_sha256",
+                "cadence_sha256",
+                "f4_sha256",
+                "acceptance_refresh_sha256",
+            }
+            and status in {"HOLD", "COMPLETE"}
+            and all(
+                isinstance(value, str) and SHA256_PATTERN.fullmatch(value)
+                for value in (
+                    predecessor.get("approval_round_id"),
+                    *launches,
+                    predecessor.get("predecessor_receipt_sha256"),
+                    *detail_hashes,
+                )
+            )
+            and (
+                (status == "HOLD" and refresh_sha is None)
+                or (
+                    status == "COMPLETE"
+                    and isinstance(refresh_sha, str)
+                    and SHA256_PATTERN.fullmatch(refresh_sha)
+                )
+            )
+        )
+    else:
+        valid = False
+    if not valid:
+        raise GateHoldError("provider materialization predecessor is invalid")
+    return sha256_hex(canonical_bytes(predecessor))
+
+
+def _validate_materialized_capture(
+    capture: JsonObject,
+    *,
+    provider: str,
+    identity_envs: tuple[str, ...],
+) -> None:
+    if frozenset(capture) != CAPTURE_FIELDS:
+        raise GateHoldError("provider capture schema is not closed")
+    if capture.get("provider") != provider:
+        raise GateHoldError("provider mismatch")
+    if capture.get("identity_sha256") != identity_digest(identity_envs):
+        raise GateHoldError("protected provider identity mismatch")
+    if capture.get("identity_bindings") != identity_bindings(identity_envs):
+        raise GateHoldError("protected provider identity binding mismatch")
+    verified = with_receipt_sha(
+        {
+            **capture,
+            "schema": "free-tier.provider-capture-verified.v1",
+            "phase": "pre-0010",
+            "reviewed_sha": "0" * 40,
+            "input_sha256": sha256_hex(canonical_bytes(capture)),
+        }
+    )
+    _ = validate_verified_capture(verified)
+
+
+def materialize_provider_capture(
+    *,
+    provider: str,
+    observation_path: Path,
+    raw_response_path: Path,
+    screenshot_path: Path,
+    identity_envs: tuple[str, ...],
+) -> JsonObject:
+    """Derive one redacted provider capture from owner-only inputs."""
+    if provider not in PROVIDERS:
+        raise GateHoldError("provider is unsupported")
+    require_provider_identity_envs(provider, identity_envs)
+    for path in (observation_path, raw_response_path, screenshot_path):
+        _require_private_regular_file(path)
+    observation = load_json(observation_path)
+    if frozenset(observation) != PRIVATE_OBSERVATION_FIELDS:
+        raise GateHoldError("private provider observation schema is not closed")
+    if observation.get("schema") != "free-tier.provider-observation.v1":
+        raise GateHoldError("private provider observation schema mismatch")
+    if observation.get("provider") != provider:
+        raise GateHoldError("provider mismatch")
+    response = load_json(raw_response_path)
+    payloads = response.get("official_payloads")
+    if (
+        frozenset(response) != PRIVATE_RESPONSE_FIELDS
+        or response.get("schema") != "free-tier.provider-private-response.v1"
+        or response.get("provider") != provider
+        or response.get("observation_sha256")
+        != sha256_hex(canonical_bytes(observation))
+        or not isinstance(payloads, list)
+        or not payloads
+    ):
+        raise GateHoldError("private provider response does not derive observation")
+    source_url = require_string(observation.get("source_url"), "source_url")
+    parsed_source = urlsplit(source_url)
+    if (
+        parsed_source.scheme != "https"
+        or parsed_source.hostname not in PROVIDER_HOSTS[provider]
+        or parsed_source.username is not None
+        or parsed_source.password is not None
+    ):
+        raise GateHoldError("private provider source URL is not official")
+    capture: JsonObject = {
+        **observation,
+        "schema": "free-tier.provider-capture.v1",
+        "source_url": PROVIDER_PUBLIC_SOURCE_URLS[provider],
+        "identity_sha256": identity_digest(identity_envs),
+        "identity_bindings": cast("JsonValue", identity_bindings(identity_envs)),
+        "response_sha256": _file_sha256(raw_response_path),
+        "screenshot_sha256": _file_sha256(screenshot_path),
+        "source_url_sha256": sha256_hex(source_url.encode()),
+    }
+    _validate_materialized_capture(
+        capture,
+        provider=provider,
+        identity_envs=identity_envs,
+    )
+    return capture
+
+
+def import_provider_capture(  # noqa: PLR0913
     *,
     provider: str,
     input_path: Path,
     identity_envs: tuple[str, ...],
     expected_sha: str,
     phase: str,
+    expected_plan_sha256: str = "",
+    activation_nonce: str = "",
+    predecessor: JsonObject | None = None,
 ) -> JsonObject:
     """Validate and minimize one redacted provider capture."""
     if provider not in PROVIDERS or phase not in PHASES:
         raise GateHoldError("unsupported provider or phase")
     require_provider_identity_envs(provider, identity_envs)
-    raw = load_json(input_path)
+    if predecessor is None:
+        raise GateHoldError("deployment root receipt is required")
+    predecessor_sha = require_materialization_predecessor(
+        predecessor,
+        phase=phase,
+        expected_sha=expected_sha,
+        expected_plan_sha256=expected_plan_sha256,
+        activation_nonce=activation_nonce,
+    )
+    materialized = load_json(input_path)
+    materialization_sha = require_receipt_sha(materialized, "materialization")
+    if (
+        frozenset(materialized) != MATERIALIZED_CAPTURE_FIELDS
+        or materialized.get("schema") != "free-tier.provider-capture-materialized.v1"
+        or materialized.get("reviewed_sha") != expected_sha
+        or materialized.get("approved_plan_sha256") != expected_plan_sha256
+        or materialized.get("activation_nonce") != activation_nonce
+        or materialized.get("phase") != phase
+        or materialized.get("predecessor_receipt_sha256") != predecessor_sha
+    ):
+        raise GateHoldError("provider materialization root binding mismatch")
+    raw_value = materialized.get("capture")
+    if not isinstance(raw_value, dict):
+        raise GateHoldError("materialized provider capture is required")
+    raw = cast("JsonObject", raw_value)
     if frozenset(raw) != CAPTURE_FIELDS:
         raise GateHoldError("provider capture schema is not closed")
     if raw.get("schema") != "free-tier.provider-capture.v1":
@@ -253,6 +631,8 @@ def import_provider_capture(
             "schema": "free-tier.provider-capture-verified.v1",
             "phase": phase,
             "reviewed_sha": expected_sha,
+            "materialization_predecessor_sha256": predecessor_sha,
+            "materialization_receipt_sha256": materialization_sha,
             "input_sha256": sha256_hex(canonical_bytes(raw)),
         }
     )

@@ -12,6 +12,7 @@ import sys
 from hashlib import sha256
 from pathlib import Path
 from typing import Final, Literal, Never
+from urllib.parse import unquote, urlsplit
 
 from app.domain.types import JsonValue
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -32,6 +33,7 @@ CURRENT_PATTERN: Final = re.compile(r"^(2026072[67]_[0-9]{4})(?: \(head\))?$")
 EXPECTED_HEAD: Final = "20260727_0011"
 WORKFLOW_PATH: Final = ".github/workflows/migrate.yml"
 ARGUMENT_COUNT: Final = 2
+POSTGRES_SESSION_PORT: Final = 5432
 _JSON_ADAPTER: Final[TypeAdapter[JsonValue]] = TypeAdapter(JsonValue)
 _RUNS_ADAPTER: Final[TypeAdapter[tuple[RunCandidate, ...]]] = TypeAdapter(
     tuple[RunCandidate, ...]
@@ -219,9 +221,7 @@ def validate_dispatch(
         "upgrade" if request.operation == "upgrade" else "downgrade"
     )
     revision: Literal["20260727_0010", "20260727_0011"] = (
-        "20260727_0010"
-        if request.revision == "20260727_0010"
-        else "20260727_0011"
+        "20260727_0010" if request.revision == "20260727_0010" else "20260727_0011"
     )
     if tuple_key == ("upgrade", "20260727_0010", "migrate-production"):
         if request.attestation_run_id or request.attestation_sha256:
@@ -283,6 +283,48 @@ def validate_result(output: str, request: DispatchRequest) -> None:
         _reject("unexpected_result_revision")
 
 
+def _database_identity(
+    url: str,
+    schemes: frozenset[str],
+) -> tuple[str, int, str, str, str]:
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port or POSTGRES_SESSION_PORT
+    except ValueError:
+        _reject("database_url_invalid")
+    database = unquote(parsed.path.removeprefix("/"))
+    username = unquote(parsed.username or "")
+    password = unquote(parsed.password or "")
+    hostname = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme not in schemes
+        or not hostname
+        or not database
+        or not username
+        or not password
+        or port != POSTGRES_SESSION_PORT
+        or parsed.fragment
+    ):
+        _reject("database_url_not_direct_or_session_5432")
+    return hostname, port, database, username, password
+
+
+def validate_database_urls(migration: str, dump: str, restore: str) -> None:
+    """Require one direct/session-mode 5432 database across async and libpq URLs."""
+    migration_identity = _database_identity(
+        migration, frozenset({"postgresql+asyncpg"})
+    )
+    native_schemes = frozenset({"postgres", "postgresql"})
+    dump_identity = _database_identity(dump, native_schemes)
+    restore_identity = _database_identity(restore, native_schemes)
+    if not hmac.compare_digest(
+        repr(migration_identity).encode(), repr(dump_identity).encode()
+    ) or not hmac.compare_digest(
+        repr(migration_identity).encode(), repr(restore_identity).encode()
+    ):
+        _reject("database_url_identity_mismatch")
+
+
 def select_unique_run(
     candidates: tuple[RunCandidate, ...], request: DispatchRequest
 ) -> RunCandidate:
@@ -316,17 +358,23 @@ def _request_from_environment() -> DispatchRequest:
 def main() -> int:
     """Validate workflow inputs without printing bodies, credentials, or identifiers."""
     try:
-        request = _request_from_environment()
         if len(sys.argv) != ARGUMENT_COUNT:
             _reject("usage")
         command = sys.argv[1]
+        if command == "validate-database-urls":
+            validate_database_urls(
+                os.environ.get("MIGRATION_DATABASE_URL", ""),
+                os.environ.get("PG_DUMP_DATABASE_URL", ""),
+                os.environ.get("PG_RESTORE_DATABASE_URL", ""),
+            )
+            _ = sys.stdout.write("migration_dispatch_validated\n")
+            return 0
+        request = _request_from_environment()
         if command == "validate-dispatch":
             _ = validate_dispatch(
                 request,
                 actual_event_sha=os.environ.get("GITHUB_EVENT_SHA"),
-                claimed_reservation_sha256=os.environ.get(
-                    "CLAIMED_RESERVATION_SHA256"
-                ),
+                claimed_reservation_sha256=os.environ.get("CLAIMED_RESERVATION_SHA256"),
                 defer_reservation_claim=(
                     os.environ.get("DEFER_RESERVATION_CLAIM") == "true"
                 ),
@@ -373,6 +421,7 @@ __all__ = (
     "canonical_body",
     "select_unique_run",
     "validate_current",
+    "validate_database_urls",
     "validate_dispatch",
     "validate_heads",
     "validate_result",

@@ -184,7 +184,7 @@ def test_vercel_special_operation_argv_carries_distinct_evidence() -> None:
         "--predecessor-receipt", "previous.json",
         "--attempt", "1",
         "--project-kind", "api",
-        "--team-slug", "63amg0010-5358-projects",
+        "--team-slug", "63amg0010-5358s-projects",
         "--org-id-env", "VERCEL_ORG_ID",
         "--project-name", "prediction-monitor-api",
         "--project-id-env", "VERCEL_API_PROJECT_ID",

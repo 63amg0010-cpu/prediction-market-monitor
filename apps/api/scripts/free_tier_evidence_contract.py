@@ -22,11 +22,44 @@ CAPTURE_FIELDS: Final = frozenset(
         "source_url_sha256",
     }
 )
+PRIVATE_OBSERVATION_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "provider",
+        "public_project",
+        "captured_at",
+        "plan",
+        "paid_enabled",
+        "overage_enabled",
+        "quota_status",
+        "dimensions",
+        "source_url_class",
+        "source_url",
+    }
+)
 VERIFIED_FIELDS: Final = CAPTURE_FIELDS | frozenset(
     {"phase", "reviewed_sha", "input_sha256", "receipt_sha256"}
 )
 OPTIONAL_CHAIN_FIELDS: Final = frozenset(
-    {"expected_plan_sha256", "activation_nonce", "predecessor_receipt"}
+    {
+        "expected_plan_sha256",
+        "activation_nonce",
+        "predecessor_receipt",
+        "materialization_predecessor_sha256",
+        "materialization_receipt_sha256",
+    }
+)
+MATERIALIZED_CAPTURE_FIELDS: Final = frozenset(
+    {
+        "schema",
+        "capture",
+        "reviewed_sha",
+        "approved_plan_sha256",
+        "activation_nonce",
+        "phase",
+        "predecessor_receipt_sha256",
+        "receipt_sha256",
+    }
 )
 DIMENSION_FIELDS: Final = frozenset(
     {
@@ -110,6 +143,12 @@ PROVIDER_HOSTS: Final = {
     "vercel-api": frozenset({"api.vercel.com", "vercel.com"}),
     "vercel-web": frozenset({"api.vercel.com", "vercel.com"}),
     "supabase": frozenset({"api.supabase.com", "supabase.com"}),
+}
+PROVIDER_PUBLIC_SOURCE_URLS: Final = {
+    "github": "https://docs.github.com/en/billing/reference/product-usage-included",
+    "vercel-api": "https://vercel.com/docs/limits",
+    "vercel-web": "https://vercel.com/docs/limits",
+    "supabase": "https://supabase.com/docs/guides/platform/billing-on-supabase",
 }
 PROVIDER_DIMENSIONS: Final = {
     "github": frozenset(

@@ -118,6 +118,17 @@ def with_receipt_sha(value: JsonObject) -> JsonObject:
     return {**value, "receipt_sha256": sha256_hex(canonical_bytes(value))}
 
 
+def require_receipt_sha(value: JsonObject, label: str) -> str:
+    """Return a verified canonical receipt digest without exposing its body."""
+    receipt = value.get("receipt_sha256")
+    if not isinstance(receipt, str):
+        raise GateHoldError(f"{label} receipt SHA is required")
+    body = {key: item for key, item in value.items() if key != "receipt_sha256"}
+    if receipt != sha256_hex(canonical_bytes(body)):
+        raise GateHoldError(f"{label} receipt SHA mismatch")
+    return receipt
+
+
 def fixture_rows() -> tuple[tuple[str, str], ...]:
     """Create exactly 4,800 distinct rows totaling exactly 60 MiB."""
     titles = tuple(f"row-{index:04d}" for index in range(FIXTURE_ROWS))
