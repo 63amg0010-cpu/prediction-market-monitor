@@ -357,9 +357,18 @@ def _github_payloads(
         params=params,
     )
     billing = _json_object(body, "github_billing_invalid")
+    billing_keys = set(billing)
     if (
-        set(billing) != {"timePeriod", "user", "usageItems"}
+        billing_keys
+        not in (
+            {"timePeriod", "user", "usageItems"},
+            {"timePeriod", "user", "repository", "usageItems"},
+        )
         or billing.get("user") != OWNER
+        or (
+            "repository" in billing
+            and billing.get("repository") != REPOSITORY
+        )
     ):
         raise CaptureHoldError("github_billing_invalid")
     period = billing.get("timePeriod")
@@ -404,7 +413,7 @@ def _github_payloads(
                 {field: item[field] for field in GITHUB_ITEM_FIELDS},
             )
         )
-    if present_dimensions != GITHUB_REQUIRED_BILLING_DIMENSIONS:
+    if not present_dimensions.issubset(GITHUB_REQUIRED_BILLING_DIMENSIONS):
         raise CaptureHoldError("github_billing_scope_missing")
     return [
         {

@@ -91,6 +91,7 @@ def _github_transport(
         billing = {
             "timePeriod": {"year": 2026, "month": 8},
             "user": acquire.OWNER,
+            "repository": acquire.REPOSITORY,
             "usageItems": items,
         }
         if raw_json:
@@ -132,6 +133,7 @@ def test_github_acquisition_uses_pinned_routes_headers_and_schema(
                 {
                     "timePeriod": {"year": 2026, "month": 8},
                     "user": acquire.OWNER,
+                    "repository": acquire.REPOSITORY,
                     "usageItems": _github_usage_items(),
                 }
             )
@@ -208,16 +210,14 @@ def test_github_summary_rejects_report_only_date_and_repository_fields(
         )
 
 
-@pytest.mark.parametrize("case", ["unknown", "missing", "nonfinite"])
-def test_github_summary_rejects_unmapped_incomplete_or_nonfinite_usage(
+@pytest.mark.parametrize("case", ["unknown", "nonfinite"])
+def test_github_summary_rejects_unmapped_or_nonfinite_usage(
     tmp_path: Path,
     case: str,
 ) -> None:
     items = _github_usage_items()
     if case == "unknown":
         items[0]["sku"] = "unreviewed_sku"
-    elif case == "missing":
-        _ = items.pop()
     else:
         items[0]["netQuantity"] = float("inf")
     with pytest.raises(acquire.CaptureHoldError):
@@ -225,6 +225,20 @@ def test_github_summary_rejects_unmapped_incomplete_or_nonfinite_usage(
             _request(tmp_path, "github"),
             transport=_github_transport(items, raw_json=case == "nonfinite"),
         )
+
+
+def test_github_summary_retains_documented_nonzero_items_when_zero_skus_omitted(
+    tmp_path: Path,
+) -> None:
+    items = _github_usage_items()
+    _ = items.pop()
+    document = acquire.acquire(
+        _request(tmp_path, "github"),
+        transport=_github_transport(items),
+    )
+    payloads = cast("list[dict[str, object]]", document["official_payloads"])
+    billing = payloads[3]
+    assert billing["value"] == items
 
 
 def test_github_optional_model_is_validated_but_not_retained(tmp_path: Path) -> None:

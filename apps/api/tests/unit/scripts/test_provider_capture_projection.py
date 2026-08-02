@@ -255,6 +255,58 @@ def test_project_provider_capture_is_schema_closed_and_threshold_bound() -> None
     )
 
 
+def test_github_omitted_zero_sku_requires_dashboard_zero() -> None:
+    payload = _github_projection_input()
+    official = cast("dict[str, object]", payload["officialPayloads"])
+    payloads = cast("list[dict[str, object]]", official["official_payloads"])
+    billing = payloads[3]
+    items = cast("list[dict[str, object]]", billing["value"])
+    billing["value"] = [item for item in items if item["product"] != "Packages"]
+    snapshot = cast("str", payload["dashboardSnapshot"])
+    payload["dashboardSnapshot"] = snapshot.replace(
+        "Packages storage: 10 /",
+        "Packages storage: 0 /",
+        1,
+    )
+    source = f"""
+      import {{ projectProviderCapture }} from {json.dumps(_module_url())};
+      let input = '';
+      for await (const chunk of process.stdin) input += chunk;
+      const value = JSON.parse(input);
+      process.stdout.write(JSON.stringify(projectProviderCapture(value).observation));
+    """
+    observation = cast(
+        "dict[str, object]",
+        _node(source, payload, env={"GITHUB_REPOSITORY_ID": "123"}),
+    )
+    dimensions = cast("list[dict[str, object]]", observation["dimensions"])
+    current = [
+        value
+        for value in dimensions
+        if value["name"] == "github_packages_gb_hours"
+        and value["observed_usage"] == 0
+    ]
+    assert current
+
+    payload["dashboardSnapshot"] = snapshot
+    rejecting_source = f"""
+      import {{ projectProviderCapture }} from {json.dumps(_module_url())};
+      let input = '';
+      for await (const chunk of process.stdin) input += chunk;
+      const value = JSON.parse(input);
+      try {{ projectProviderCapture(value); process.stdout.write(JSON.stringify('unexpected_success')); }}
+      catch (error) {{ process.stdout.write(JSON.stringify(error.code)); }}
+    """
+    assert (
+        _node(
+            rejecting_source,
+            payload,
+            env={"GITHUB_REPOSITORY_ID": "123"},
+        )
+        == "official_dashboard_counter_mismatch"
+    )
+
+
 @pytest.mark.parametrize(
     ("case", "expected"),
     [

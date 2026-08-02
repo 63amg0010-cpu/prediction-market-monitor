@@ -332,7 +332,6 @@ function validateGithubOfficial(document) {
   ) {
     hold("github_billing_scope_invalid");
   }
-  const present = new Set();
   for (const item of billingPayload.value) {
     exactKeys(item, GITHUB_ITEM_FIELDS, "github_billing_item_invalid");
     for (const field of GITHUB_ITEM_FIELDS) {
@@ -341,16 +340,7 @@ function validateGithubOfficial(document) {
     }
     const dimension = GITHUB_TUPLES.get(`${item.product}\0${item.sku}\0${item.unitType}`);
     if (!dimension) hold("github_billing_tuple_unknown");
-    present.add(dimension);
     addUsage(usage, dimension, item.netQuantity);
-  }
-  const required = new Set([
-    "github_actions_minutes",
-    "github_artifact_gb_hours",
-    "github_packages_gb_hours",
-  ]);
-  if (present.size !== required.size || [...present].some((value) => !required.has(value))) {
-    hold("github_billing_dimension_missing");
   }
   return usage;
 }
@@ -1125,7 +1115,11 @@ export function projectProviderCapture({
     if (!(windowStart < windowEnd)) hold("window_invalid");
     if (official.usage !== null && windowStart <= capture && capture < windowEnd) {
       const officialValue = official.usage.get(dimension.name);
-      if (!Number.isSafeInteger(officialValue) || dimension.observed_usage !== officialValue) {
+      if (
+        (officialValue === undefined && dimension.observed_usage !== 0) ||
+        (officialValue !== undefined &&
+          (!Number.isSafeInteger(officialValue) || dimension.observed_usage !== officialValue))
+      ) {
         hold("official_dashboard_counter_mismatch");
       }
     }
