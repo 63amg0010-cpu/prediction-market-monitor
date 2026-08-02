@@ -255,6 +255,38 @@ def test_project_provider_capture_is_schema_closed_and_threshold_bound() -> None
     )
 
 
+def test_private_identity_values_enable_processless_browser_projection() -> None:
+    payload = _github_projection_input()
+    identities = {
+        "GITHUB_REPOSITORY_ID": "123",
+        "VERCEL_ORG_ID": "private-org",
+        "VERCEL_API_PROJECT_ID": "private-api",
+        "VERCEL_WEB_PROJECT_ID": "private-web",
+        "SUPABASE_ORG_ID": "private-supabase-org",
+        "SUPABASE_PROJECT_ID": "private-supabase-project",
+    }
+    source = f"""
+      import {{
+        clearPrivateIdentityValues,
+        installPrivateIdentityValues,
+        projectProviderCapture,
+      }} from {json.dumps(_module_url())};
+      let input = '';
+      for await (const chunk of process.stdin) input += chunk;
+      const value = JSON.parse(input);
+      installPrivateIdentityValues(value.identities);
+      try {{ process.stdout.write(JSON.stringify(projectProviderCapture(value.payload))); }}
+      finally {{ clearPrivateIdentityValues(); }}
+    """
+    result = cast(
+        "dict[str, object]",
+        _node(source, {"payload": payload, "identities": identities}),
+    )
+    rendered = json.dumps(result["observation"])
+    assert result["observation"]
+    assert all(value not in rendered for value in identities.values())
+
+
 def test_github_omitted_zero_sku_requires_dashboard_zero() -> None:
     payload = _github_projection_input()
     official = cast("dict[str, object]", payload["officialPayloads"])

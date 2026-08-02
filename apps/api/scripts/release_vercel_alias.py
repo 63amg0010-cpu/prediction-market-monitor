@@ -1,6 +1,6 @@
 """Injected Vercel compatibility-alias attempt handler."""
 
-# ruff: noqa: EM101
+# ruff: noqa: C901, EM101, PLR0911
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from scripts.release_vercel_models import (
 from scripts.release_vercel_receipts import accepted_attempt, failed_attempt
 from scripts.release_vercel_validation import (
     parse_inspect,
+    parse_inspect_reference,
     validate_alias_listing,
     validate_operation,
 )
@@ -128,14 +129,42 @@ def run_compat_alias(
             expected_alias=request.alias,
             expected_deployment_id=deployment_id,
         )
+        summary_id, summary_url = parse_inspect_reference(
+            observations["inspect"], request
+        )
+    except ReleaseHoldError:
+        return failed_attempt(request, predecessor_sha, "verification", stages)
+    inspect_api_command = ChildCommand(
+        "inspect-api",
+        (
+            *base,
+            "api",
+            f"/v13/deployments/{summary_id}",
+            "--scope",
+            request.team_slug,
+            "--raw",
+        ),
+        request.repository_root,
+        environment,
+    )
+    inspect_api_result = runner.execute(inspect_api_command)
+    stages.append(inspect_api_command.stage)
+    inspect_api = _json(inspect_api_result.stdout)
+    if inspect_api_result.returncode or inspect_api is None:
+        return failed_attempt(request, predecessor_sha, "inspect-api", stages)
+    try:
         inspected_id, _, _ = parse_inspect(
-            observations["inspect"],
+            inspect_api,
             request,
             expected_source_sha=request.expected_sha,
         )
     except ReleaseHoldError:
         return failed_attempt(request, predecessor_sha, "verification", stages)
-    if inspected_id != deployment_id:
+    if (
+        inspected_id != deployment_id
+        or inspected_id != summary_id
+        or summary_url != deployment_url
+    ):
         return failed_attempt(request, predecessor_sha, "verification", stages)
     return accepted_attempt(
         request,

@@ -147,7 +147,8 @@ def successful_runner() -> RecordingRunner:
             "target-sha": ChildResult(0, SHA),
             "protected-sha": ChildResult(0, SHA),
             "deploy": ChildResult(0, API_URL),
-            "inspect": ChildResult(0, inspect_json()),
+            "inspect": ChildResult(0, inspect_summary_json()),
+            "inspect-api": ChildResult(0, inspect_json()),
             "health": ChildResult(
                 0,
                 json.dumps(
@@ -178,6 +179,7 @@ def test_restore_invokes_exact_pinned_pipeline_once_without_secret_argv() -> Non
         "build",
         "deploy",
         "inspect",
+        "inspect-api",
         "alias",
         "health",
         "worktree-remove",
@@ -349,7 +351,8 @@ def test_split_compensation_rebuilds_only_captured_protected_prestate() -> None:
     runner.results = {
         **runner.results,
         "target-sha": ChildResult(0, old_sha),
-        "inspect": ChildResult(0, inspect_json(source_sha=old_sha)),
+        "inspect": ChildResult(0, inspect_summary_json()),
+        "inspect-api": ChildResult(0, inspect_json(source_sha=old_sha)),
         "health": ChildResult(
             0,
             json.dumps(
@@ -416,7 +419,8 @@ def test_compat_alias_uses_existing_deployment_without_rebuild() -> None:
                     }
                 ),
             ),
-            "inspect": ChildResult(0, inspect_json()),
+            "inspect": ChildResult(0, inspect_summary_json()),
+            "inspect-api": ChildResult(0, inspect_json()),
         }
     )
     result = run_vercel_deploy(request, runner)
@@ -427,6 +431,7 @@ def test_compat_alias_uses_existing_deployment_without_rebuild() -> None:
         "alias",
         "alias-ls",
         "inspect",
+        "inspect-api",
     ]
     assert runner.commands[0].argv == (
         "npx",
@@ -485,7 +490,8 @@ def test_compat_alias_failure_is_attempt_indexed_and_attempt_two_only() -> None:
     failed_runner = RecordingRunner(
         {
             "alias-ls": ChildResult(0, json.dumps({"aliases": []})),
-            "inspect": ChildResult(0, inspect_json()),
+            "inspect": ChildResult(0, inspect_summary_json()),
+            "inspect-api": ChildResult(0, inspect_json()),
         }
     )
     failed = run_vercel_deploy(first, failed_runner)
@@ -516,7 +522,8 @@ def test_compat_alias_failure_is_attempt_indexed_and_attempt_two_only() -> None:
                     }
                 ),
             ),
-            "inspect": ChildResult(0, inspect_json()),
+            "inspect": ChildResult(0, inspect_summary_json()),
+            "inspect-api": ChildResult(0, inspect_json()),
         }
     )
     assert run_vercel_deploy(second, success_runner)["accepted"] is True

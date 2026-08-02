@@ -3,11 +3,13 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { constants, promises as fs } from "node:fs";
+import { userInfo } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 
 const WINDOWS_LOCK_HELPER = fileURLToPath(new URL("./private_windows_directory_lock.py", import.meta.url));
+const IS_WINDOWS = path.sep === "\\";
 const REPOSITORY_PYTHON = path.resolve(path.dirname(WINDOWS_LOCK_HELPER), "../../../.venv/Scripts/python.exe");
 const WINDOWS_LOCK_HELPER_SHA256 = "6f6f62967c1943a637e361202205972e5417ff06f5c9f4a76162b77b28644cd2";
 
@@ -54,6 +56,8 @@ const IDENTITY_ENVS = {
   "vercel-web": ["VERCEL_ORG_ID", "VERCEL_WEB_PROJECT_ID"],
   supabase: ["SUPABASE_ORG_ID", "SUPABASE_PROJECT_ID"],
 };
+const ALL_IDENTITY_ENVS = new Set(Object.values(IDENTITY_ENVS).flat());
+let privateIdentityValues = null;
 const EXPECTED_PLANS = {
   github: "public-standard",
   "vercel-api": "hobby",
@@ -159,6 +163,29 @@ function hold(code) {
   throw error;
 }
 
+function ambientEnvironmentValue(name) {
+  return typeof process !== "undefined" && process?.env ? process.env[name] : undefined;
+}
+
+function identityValue(name) {
+  const value = privateIdentityValues?.[name] ?? ambientEnvironmentValue(name);
+  if (typeof value !== "string" || value.length === 0) hold("identity_binding_mismatch");
+  return value;
+}
+
+export function installPrivateIdentityValues(values) {
+  exactKeys(values, ALL_IDENTITY_ENVS, "private_identity_values_invalid");
+  const checked = {};
+  for (const name of ALL_IDENTITY_ENVS) {
+    checked[name] = nonemptyString(values[name], "private_identity_values_invalid");
+  }
+  privateIdentityValues = Object.freeze(checked);
+}
+
+export function clearPrivateIdentityValues() {
+  privateIdentityValues = null;
+}
+
 function exactKeys(value, expected, code) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) hold(code);
   const keys = Object.keys(value);
@@ -217,8 +244,7 @@ function expectedDashboardUrl(provider) {
   if (provider === "vercel-api" || provider === "vercel-web") {
     return "https://vercel.com/63amg0010-5358s-projects/~/usage";
   }
-  const organization = process.env.SUPABASE_ORG_ID;
-  if (!organization) hold("identity_binding_mismatch");
+  const organization = identityValue("SUPABASE_ORG_ID");
   return `https://supabase.com/dashboard/org/${encodeURIComponent(organization)}/usage`;
 }
 
@@ -237,7 +263,7 @@ function requireIdentityBindings(document, provider, identityEnvNames) {
   document.identity_bindings.forEach((binding, index) => {
     exactKeys(binding, new Set(["env", "sha256"]), "identity_bindings_invalid");
     const name = expectedNames[index];
-    const secret = process.env[name];
+    const secret = identityValue(name);
     if (!secret || binding.env !== name || binding.sha256 !== sha256Bytes(Buffer.from(secret))) {
       hold("identity_binding_mismatch");
     }
@@ -257,7 +283,7 @@ function validateGithubOfficial(document) {
   );
   if (
     !Number.isSafeInteger(repository.id) ||
-    String(repository.id) !== process.env.GITHUB_REPOSITORY_ID ||
+    String(repository.id) !== identityValue("GITHUB_REPOSITORY_ID") ||
     repository.full_name !== PUBLIC_PROJECTS.github ||
     repository.private !== false
   ) {
@@ -358,7 +384,7 @@ function validateVercelOfficial(document, provider) {
   );
   const billing = exactKeys(team.billing, new Set(["plan"]), "vercel_team_payload_invalid");
   if (
-    team.id !== process.env.VERCEL_ORG_ID ||
+    team.id !== identityValue("VERCEL_ORG_ID") ||
     team.slug !== "63amg0010-5358s-projects" ||
     !nonemptyString(team.name, "vercel_team_payload_invalid") ||
     billing.plan !== "hobby"
@@ -373,9 +399,9 @@ function validateVercelOfficial(document, provider) {
     "vercel_project_payload_invalid",
   );
   if (
-    project.id !== process.env[IDENTITY_ENVS[provider][1]] ||
+    project.id !== identityValue(IDENTITY_ENVS[provider][1]) ||
     project.name !== PUBLIC_PROJECTS[provider] ||
-    project.accountId !== process.env.VERCEL_ORG_ID
+    project.accountId !== identityValue("VERCEL_ORG_ID")
   ) {
     hold("vercel_project_identity_mismatch");
   }
@@ -393,7 +419,7 @@ function validateVercelOfficial(document, provider) {
     "vercel_focus_scope_invalid",
   );
   if (
-    scope.teamId !== process.env.VERCEL_ORG_ID ||
+    scope.teamId !== identityValue("VERCEL_ORG_ID") ||
     scope.from !== document.billing_window_start ||
     scope.to !== document.billing_window_end
   ) {
@@ -419,8 +445,8 @@ function validateVercelOfficial(document, provider) {
     const chargeStart = parseUtc(record.ChargePeriodStart, "vercel_focus_window_invalid");
     const chargeEnd = parseUtc(record.ChargePeriodEnd, "vercel_focus_window_invalid");
     if (
-      record.BillingAccountId !== process.env.VERCEL_ORG_ID ||
-      record.ResourceId !== process.env[IDENTITY_ENVS[provider][1]] ||
+      record.BillingAccountId !== identityValue("VERCEL_ORG_ID") ||
+      record.ResourceId !== identityValue(IDENTITY_ENVS[provider][1]) ||
       record.ResourceName !== PUBLIC_PROJECTS[provider] ||
       record.BillingCurrency !== "USD" ||
       !(start <= chargeStart && chargeStart < chargeEnd && chargeEnd <= end)
@@ -465,7 +491,7 @@ function validateSupabaseOfficial(document) {
     value.paid_enabled !== false ||
     value.overage_enabled !== false ||
     value.addon_enabled !== false ||
-    value.project_filter !== process.env.SUPABASE_PROJECT_ID ||
+    value.project_filter !== identityValue("SUPABASE_PROJECT_ID") ||
     value.billing_window_start !== document.billing_window_start ||
     value.billing_window_end !== document.billing_window_end ||
     value.source_url !== expectedDashboardUrl("supabase") ||
@@ -512,7 +538,8 @@ function validateOfficialDocument(document, provider, identityEnvNames) {
 function windowsToolEnvironment(extra = {}) {
   const result = { ...extra };
   for (const name of ["SystemRoot", "WINDIR", "PATH", "PATHEXT", "ComSpec"]) {
-    if (process.env[name]) result[name] = process.env[name];
+    const value = ambientEnvironmentValue(name);
+    if (value) result[name] = value;
   }
   return result;
 }
@@ -557,9 +584,9 @@ async function requirePrivateRegularFile(filePath) {
   if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1 || stats.size <= 0) {
     hold("private_file_invalid");
   }
-  if (process.platform === "win32") {
+  if (IS_WINDOWS) {
     if (!windowsAclOwnerOnly(filePath)) hold("private_file_acl_invalid");
-  } else if ((stats.mode & 0o077) !== 0 || stats.uid !== process.getuid()) {
+  } else if ((stats.mode & 0o077) !== 0 || stats.uid !== userInfo().uid) {
     hold("private_file_acl_invalid");
   }
 }
@@ -569,9 +596,9 @@ async function requirePrivateDirectory(directoryPath) {
   if (!stats.isDirectory() || stats.isSymbolicLink()) hold("private_root_invalid");
   const resolved = await fs.realpath(directoryPath).catch(() => hold("private_root_unavailable"));
   if (path.resolve(resolved) !== path.resolve(directoryPath)) hold("private_root_alias_detected");
-  if (process.platform === "win32") {
+  if (IS_WINDOWS) {
     if (!windowsAclOwnerOnly(directoryPath)) hold("private_root_acl_invalid");
-  } else if ((stats.mode & 0o077) !== 0 || stats.uid !== process.getuid()) {
+  } else if ((stats.mode & 0o077) !== 0 || stats.uid !== userInfo().uid) {
     hold("private_root_acl_invalid");
   }
   return stats;
@@ -582,7 +609,7 @@ function sameFile(left, right) {
 }
 
 async function withPrivateDirectoryLock(directoryPath, operation) {
-  if (process.platform !== "win32") return operation();
+  if (!IS_WINDOWS) return operation();
   const [pythonStats, helperStats, pythonRealPath, helperRealPath, helperBytes] = await Promise.all([
     fs.lstat(REPOSITORY_PYTHON).catch(() => hold("private_directory_lock_runtime_invalid")),
     fs.lstat(WINDOWS_LOCK_HELPER).catch(() => hold("private_directory_lock_runtime_invalid")),
@@ -850,7 +877,7 @@ function requireDashboardIdentity(snapshot, provider, publicProject) {
     required.push("63amg0010-5358s-projects");
   }
   if (provider === "supabase") {
-    required.push(process.env.SUPABASE_ORG_ID, process.env.SUPABASE_PROJECT_ID);
+    required.push(identityValue("SUPABASE_ORG_ID"), identityValue("SUPABASE_PROJECT_ID"));
   }
   if (required.some((value) => typeof value !== "string" || !snapshot.includes(value))) {
     hold("dashboard_identity_missing");
@@ -956,8 +983,7 @@ function dashboardProjection(
 
 function currentIdentityBindings(provider) {
   return IDENTITY_ENVS[provider].map((name) => {
-    const value = process.env[name];
-    if (!value) hold("identity_binding_mismatch");
+    const value = identityValue(name);
     return { env: name, sha256: sha256Bytes(Buffer.from(value)) };
   });
 }
@@ -1010,7 +1036,7 @@ function buildSupabaseOfficialDocument(spec) {
           paid_enabled: projection.paid_enabled,
           overage_enabled: projection.overage_enabled,
           addon_enabled: projection.addon_enabled,
-          project_filter: process.env.SUPABASE_PROJECT_ID,
+          project_filter: identityValue("SUPABASE_PROJECT_ID"),
           billing_window_start: spec.billingWindowStart,
           billing_window_end: spec.billingWindowEnd,
           source_url: projection.source_url,
@@ -1281,7 +1307,7 @@ async function exclusivePrivateWrite(filePath, bytes, parentPath, parentIdentity
       await handle.close();
     }
     await fs.chmod(filePath, 0o600);
-    if (process.platform === "win32") hardenWindowsAcl(filePath);
+    if (IS_WINDOWS) hardenWindowsAcl(filePath);
     const parentAfter = await fs.lstat(parentPath).catch(() => hold("private_root_changed"));
     const outputAfter = await fs.lstat(filePath).catch(() => hold("private_output_changed"));
     const realParentAfter = await fs.realpath(parentPath).catch(() => hold("private_root_changed"));

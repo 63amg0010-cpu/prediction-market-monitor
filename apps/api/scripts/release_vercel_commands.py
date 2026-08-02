@@ -1,6 +1,6 @@
 """Injected-child handlers for exact-SHA Vercel release operations."""
 
-# ruff: noqa: C901, D103, EM101, EM102, PLR0912, PLR0915, TC003
+# ruff: noqa: C901, D103, EM101, EM102, PLR0911, PLR0912, PLR0915, TC003
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from scripts.release_vercel_models import (
 from scripts.release_vercel_receipts import accepted_attempt, failed_attempt
 from scripts.release_vercel_validation import (
     parse_inspect,
+    parse_inspect_reference,
     validate_health,
     validate_operation,
 )
@@ -170,14 +171,36 @@ def run_vercel_operation(
         )
         stages.append("inspect")
         try:
-            inspect = _json(inspect_result, "inspect_failed")
-            deployment_id, _, _ = parse_inspect(
-                inspect,
+            inspect_summary = _json(inspect_result, "inspect_failed")
+            summary_id, summary_url = parse_inspect_reference(inspect_summary, request)
+        except ReleaseHoldError:
+            return failed_attempt(request, predecessor_sha, "inspect", stages)
+        inspect_api_result = _run(
+            runner,
+            "inspect-api",
+            (
+                *base,
+                "api",
+                f"/v13/deployments/{summary_id}",
+                "--scope",
+                request.team_slug,
+                "--raw",
+            ),
+            cwd,
+            environment,
+        )
+        stages.append("inspect-api")
+        try:
+            inspect_api = _json(inspect_api_result, "inspect_api_failed")
+            deployment_id, inspected_url, _ = parse_inspect(
+                inspect_api,
                 request,
                 expected_source_sha=request.target_sha,
             )
         except ReleaseHoldError:
-            return failed_attempt(request, predecessor_sha, "inspect", stages)
+            return failed_attempt(request, predecessor_sha, "inspect-api", stages)
+        if deployment_id != summary_id or inspected_url != summary_url:
+            return failed_attempt(request, predecessor_sha, "inspect-api", stages)
         alias = _run(
             runner,
             "alias",
