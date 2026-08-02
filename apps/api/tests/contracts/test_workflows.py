@@ -190,6 +190,7 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
             "https://www.postgresql.org/media/keys/ACCC4CF8.asc",
             "https://apt.postgresql.org/pub/repos/apt",
             "postgresql-client-17",
+            'export PATH="/usr/lib/postgresql/17/bin:$PATH"',
             "pg_dump --version",
             r"PostgreSQL\) 17\.",
         )

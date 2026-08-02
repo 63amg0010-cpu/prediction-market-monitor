@@ -147,6 +147,8 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
           sudo apt-get install --yes postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
           pg_dump --version | grep -Eq '^pg_dump \(PostgreSQL\) 17\.'
       - name: Validate direct or session-mode database URLs without disclosure
         run: uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-database-urls
