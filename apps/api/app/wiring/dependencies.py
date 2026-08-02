@@ -21,6 +21,7 @@ from app.api.routes.workflow_dispatch_claim import (
     SqlWorkflowDispatchClaimer,
     WorkflowDispatchClaimOidcAuthorizer,
 )
+from app.api.routes.workflow_operation_complete import SqlWorkflowOperationCompleter
 from app.collection.analysis_input_store import AnalysisQueueVersions
 from app.collection.completion_store import CompletionServiceConfig
 from app.collection.page_service_models import PageCommitServiceConfig
@@ -132,6 +133,18 @@ def dependencies_from_environment(
             None
             if sessions is None or settings is None
             else SqlWorkflowDispatchClaimer(
+                sessions,
+                WorkflowDispatchClaimOidcAuthorizer(
+                    verifier=GitHubJwksOidcVerifier(),
+                    clock=SystemClock(),
+                    repository=settings.github_repository,
+                ),
+            )
+        ),
+        workflow_operation_completer=(
+            None
+            if sessions is None or settings is None
+            else SqlWorkflowOperationCompleter(
                 sessions,
                 WorkflowDispatchClaimOidcAuthorizer(
                     verifier=GitHubJwksOidcVerifier(),

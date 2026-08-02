@@ -44,6 +44,7 @@ REQUIRED_OPERATIONS = frozenset(
         ("POST", "/internal/release/activation-evidence-verify"),
         ("POST", "/internal/release/cadence-workflow-attempt"),
         ("POST", "/internal/release/workflow-dispatch-claim"),
+        ("POST", "/internal/release/workflow-operation-complete"),
         ("POST", "/v1/collector/commands/{command_id}/claim"),
         ("POST", "/v1/collector/commands/{command_id}/complete"),
         ("POST", "/v1/collector/commands/{command_id}/confirm-dispatch"),

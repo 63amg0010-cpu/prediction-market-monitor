@@ -114,6 +114,53 @@ jobs:
               python apps/api/scripts/activation_evidence_models.py \
               > "activation-attestation-generation-${N}.json"
           test "$(sha256sum "activation-attestation-generation-${N}.json" | cut -d' ' -f1)" = "$ATTESTATION_SHA256"
+      - name: Claim durable workflow reservation
+        env:
+          ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
+          APPROVED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+          ATTEMPT: ${{ inputs.attempt }}
+          CLAIM_ENVIRONMENT: '"production-collector"'
+          DISPLAY_TITLE: activation-evidence-${{ inputs.activation_nonce }}-generation-${{ inputs.attestation_generation }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          HEAD_SHA: ${{ inputs.expected_commit_sha }}
+          MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
+          RESERVATION_SHA256: ${{ inputs.reservation_sha256 }}
+          WORKFLOW_FILE: activation-evidence.yml
+        run: |
+          set -euo pipefail
+          umask 077
+          token_response="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=monitor-control")"
+          oidc_token="$(jq -er '.value' <<<"$token_response")"
+          jq -cn \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$WORKFLOW_FILE" \
+            --arg display_title "$DISPLAY_TITLE" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg approved_plan_sha256 "$APPROVED_PLAN_SHA256" \
+            --arg activation_nonce "$ACTIVATION_NONCE" \
+            --arg dispatch_nonce "$DISPATCH_NONCE" \
+            --arg reservation_sha256 "$RESERVATION_SHA256" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg event "$GITHUB_EVENT_NAME" \
+            --arg ref "$GITHUB_REF" \
+            --argjson environment "$CLAIM_ENVIRONMENT" \
+            '{repository:$repository,workflow:$workflow,display_title:$display_title,head_sha:$head_sha,approved_plan_sha256:$approved_plan_sha256,activation_nonce:$activation_nonce,dispatch_nonce:$dispatch_nonce,reservation_sha256:$reservation_sha256,run_id:$run_id,run_attempt:$run_attempt,event:$event,ref:$ref,environment:$environment}' \
+            > workflow-claim-request.json
+          curl --fail --silent --show-error --request POST \
+            -H "Authorization: Bearer $oidc_token" \
+            -H "Content-Type: application/json" \
+            --data-binary @workflow-claim-request.json \
+            "${MONITOR_API_URL}/internal/release/workflow-dispatch-claim" \
+            > workflow-claim-public-receipt.json
+          jq -e \
+            --arg reservation_sha256 "$RESERVATION_SHA256" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            '.command == "workflow-dispatch-claim" and .reservation_sha256 == $reservation_sha256 and .run_id == $run_id and .accepted == true' \
+            workflow-claim-public-receipt.json > /dev/null
+          rm -f workflow-claim-request.json
       - name: Verify through scoped release API
         env:
           ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
@@ -157,11 +204,29 @@ jobs:
             > activation-evidence-public-receipt.json
           jq -e 'type == "object"' activation-evidence-public-receipt.json >/dev/null
           rm -f request.json
+      - name: Complete durable activation-evidence operation
+        run: |
+          uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
+            --api-url "${{ vars.MONITOR_API_URL }}" \
+            --command activation-evidence \
+            --display-title "activation-evidence-${{ inputs.activation_nonce }}-generation-${{ inputs.attestation_generation }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}" \
+            --evidence activation-evidence-public-receipt.json \
+            --expected-plan-sha256 "${{ inputs.expected_plan_sha256 }}" \
+            --head-sha "${{ inputs.expected_commit_sha }}" \
+            --activation-nonce "${{ inputs.activation_nonce }}" \
+            --dispatch-nonce "${{ inputs.dispatch_nonce }}" \
+            --reservation-sha256 "${{ inputs.reservation_sha256 }}" \
+            --workflow activation-evidence.yml \
+            --environment production-collector \
+            --attempt "${{ inputs.attempt }}" \
+            --json-out operation.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: activation-evidence-${{ inputs.activation_nonce }}-generation-${{ inputs.attestation_generation }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
           path: |
             activation-attestation-generation-${{ inputs.attestation_generation }}.json
             activation-evidence-public-receipt.json
+            workflow-claim-public-receipt.json
+            operation.json
           retention-days: 1
           if-no-files-found: error

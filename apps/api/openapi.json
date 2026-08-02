@@ -4230,6 +4230,268 @@
         "title": "WorkflowDispatchClaimRequest",
         "type": "object"
       },
+      "WorkflowOperationCompleteRequest": {
+        "additionalProperties": false,
+        "description": "Claim-bound terminal success input with one public evidence digest.",
+        "properties": {
+          "activation_nonce": {
+            "format": "uuid",
+            "title": "Activation Nonce",
+            "type": "string"
+          },
+          "approved_plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approved Plan Sha256",
+            "type": "string"
+          },
+          "command": {
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "title": "Command",
+            "type": "string"
+          },
+          "dispatch_nonce": {
+            "format": "uuid",
+            "title": "Dispatch Nonce",
+            "type": "string"
+          },
+          "display_title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Display Title",
+            "type": "string"
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Environment"
+          },
+          "event": {
+            "const": "workflow_dispatch",
+            "title": "Event",
+            "type": "string"
+          },
+          "evidence_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Evidence Sha256",
+            "type": "string"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "outcome": {
+            "const": "success",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "ref": {
+            "const": "refs/heads/main",
+            "title": "Ref",
+            "type": "string"
+          },
+          "repository": {
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            "title": "Repository",
+            "type": "string"
+          },
+          "reservation_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reservation Sha256",
+            "type": "string"
+          },
+          "run_attempt": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Attempt",
+            "type": "integer"
+          },
+          "run_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "workflow": {
+            "pattern": "^[A-Za-z0-9_.-]+\\.ya?ml$",
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repository",
+          "workflow",
+          "display_title",
+          "head_sha",
+          "approved_plan_sha256",
+          "activation_nonce",
+          "dispatch_nonce",
+          "reservation_sha256",
+          "run_id",
+          "run_attempt",
+          "event",
+          "ref",
+          "command",
+          "evidence_sha256",
+          "outcome"
+        ],
+        "title": "WorkflowOperationCompleteRequest",
+        "type": "object"
+      },
+      "WorkflowOperationCompleteResponse": {
+        "additionalProperties": false,
+        "description": "Schema-closed terminal receipt consumed by release verification.",
+        "properties": {
+          "accepted": {
+            "const": true,
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "activation_nonce": {
+            "title": "Activation Nonce",
+            "type": "string"
+          },
+          "approval_launch_sha256s": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              }
+            ],
+            "title": "Approval Launch Sha256S",
+            "type": "array"
+          },
+          "approval_round_id": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approval Round Id",
+            "type": "string"
+          },
+          "approved_plan_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Approved Plan Sha256",
+            "type": "string"
+          },
+          "artifact_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Artifact Sha256",
+            "type": "string"
+          },
+          "attempt": {
+            "exclusiveMinimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "command": {
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "title": "Command",
+            "type": "string"
+          },
+          "committed_revision": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Committed Revision",
+            "type": "string"
+          },
+          "dispatch_nonce": {
+            "title": "Dispatch Nonce",
+            "type": "string"
+          },
+          "enum_residue": {
+            "const": false,
+            "default": false,
+            "title": "Enum Residue",
+            "type": "boolean"
+          },
+          "head_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Head Sha",
+            "type": "string"
+          },
+          "predecessor_receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Predecessor Receipt Sha256",
+            "type": "string"
+          },
+          "reservation_receipt_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Reservation Receipt Sha256",
+            "type": "string"
+          },
+          "retry_permitted": {
+            "const": false,
+            "default": false,
+            "title": "Retry Permitted",
+            "type": "boolean"
+          },
+          "reviewed_sha": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Reviewed Sha",
+            "type": "string"
+          },
+          "run_id": {
+            "exclusiveMinimum": 0.0,
+            "title": "Run Id",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "state_after": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "State After",
+            "type": "string"
+          },
+          "state_before": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "State Before",
+            "type": "string"
+          },
+          "terminal_for_attempt": {
+            "const": true,
+            "default": true,
+            "title": "Terminal For Attempt",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "command",
+          "reviewed_sha",
+          "approved_plan_sha256",
+          "approval_round_id",
+          "approval_launch_sha256s",
+          "activation_nonce",
+          "dispatch_nonce",
+          "attempt",
+          "predecessor_receipt_sha256",
+          "reservation_receipt_sha256",
+          "run_id",
+          "head_sha",
+          "artifact_sha256",
+          "state_before",
+          "state_after",
+          "committed_revision"
+        ],
+        "title": "WorkflowOperationCompleteResponse",
+        "type": "object"
+      },
       "_CollectionRetryPayload": {
         "additionalProperties": false,
         "properties": {
@@ -4508,6 +4770,65 @@
           }
         },
         "summary": "Claim",
+        "tags": [
+          "release"
+        ]
+      }
+    },
+    "/internal/release/workflow-operation-complete": {
+      "post": {
+        "operationId": "complete_internal_release_workflow_operation_complete_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowOperationCompleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowOperationCompleteResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Complete",
         "tags": [
           "release"
         ]

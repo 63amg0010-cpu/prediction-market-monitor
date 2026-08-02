@@ -76,6 +76,11 @@ on:
         required: false
         default: 0
         type: number
+      attestation_dispatch_nonce:
+        description: Completed activation-evidence dispatch UUID for 0011 only
+        required: false
+        default: ""
+        type: string
       attestation_sha256:
         description: Completed attestation SHA-256 for 0011 only
         required: false
@@ -90,6 +95,7 @@ on:
 permissions:
   actions: read
   contents: read
+  id-token: write
 
 jobs:
   migrate:
@@ -113,6 +119,7 @@ jobs:
       ATTEMPT1_FAILED_RECEIPT_B64: ${{ inputs.attempt1_failed_receipt_b64 }}
       ATTESTATION_RUN_ID: ${{ inputs.attestation_run_id }}
       ATTESTATION_GENERATION: ${{ inputs.attestation_generation }}
+      ATTESTATION_DISPATCH_NONCE: ${{ inputs.attestation_dispatch_nonce }}
       ATTESTATION_SHA256: ${{ inputs.attestation_sha256 }}
       RESERVATION_SHA256: ${{ inputs.reservation_sha256 }}
       GITHUB_EVENT_SHA: ${{ github.sha }}
@@ -175,10 +182,15 @@ jobs:
         run: |
           set -euo pipefail
           ledger_absent="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align --command="SELECT to_regclass('public.release_roots') IS NULL")"
+          receipt_chain_absent="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align --command="SELECT to_regclass('public.release_receipt_chain') IS NULL")"
           if [ "$OPERATION:$REVISION" = "upgrade:20260727_0010" ]; then
             test "$ledger_absent" = "t"
+          elif [ "$OPERATION:$REVISION" = "upgrade:20260803_0010a" ]; then
+            test "$ledger_absent" = "f"
+            test "$receipt_chain_absent" = "t"
           else
             test "$ledger_absent" = "f"
+            test "$receipt_chain_absent" = "f"
           fi
         env:
           PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
@@ -197,7 +209,7 @@ jobs:
             '.event == "workflow_dispatch" and .head_sha == $sha and .conclusion == "success" and .path == ".github/workflows/activation-evidence.yml"' \
             "$RUNNER_TEMP/attestation-run.json" > /dev/null
           mkdir "$RUNNER_TEMP/attestation"
-          artifact="activation-evidence-${ACTIVATION_NONCE}-generation-${ATTESTATION_GENERATION}-${DISPATCH_NONCE}-attempt-${ATTEMPT}"
+          artifact="activation-evidence-${ACTIVATION_NONCE}-generation-${ATTESTATION_GENERATION}-${ATTESTATION_DISPATCH_NONCE}-attempt-${ATTEMPT}"
           timeout 30s gh run download "$ATTESTATION_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
             --name "$artifact" \
@@ -206,20 +218,78 @@ jobs:
           receipt="$RUNNER_TEMP/attestation/activation-evidence-public-receipt.json"
           test -f "$attestation"
           test -f "$receipt"
-          test "$(find "$RUNNER_TEMP/attestation" -type f | wc -l)" -eq 2
+          claim="$RUNNER_TEMP/attestation/workflow-claim-public-receipt.json"
+          test -f "$claim"
+          operation_receipt="$RUNNER_TEMP/attestation/operation.json"
+          test -f "$operation_receipt"
+          test "$(find "$RUNNER_TEMP/attestation" -type f | wc -l)" -eq 4
           test "$(sha256sum "$attestation" | cut -d' ' -f1)" = "$ATTESTATION_SHA256"
           jq -e \
             --arg nonce "$ACTIVATION_NONCE" \
             --argjson generation "$ATTESTATION_GENERATION" \
-            --arg dispatch "$DISPATCH_NONCE" \
+            --arg dispatch "$ATTESTATION_DISPATCH_NONCE" \
             --argjson attempt "$ATTEMPT" \
             --arg sha "$ATTESTATION_SHA256" \
             '.activation_nonce == $nonce and .attestation_generation == $generation and .dispatch_nonce == $dispatch and .attempt == $attempt and .attestation_sha256 == $sha' \
             "$receipt" > /dev/null
+          activation_reservation_sha256="$(jq -er '.reservation_receipt_sha256' "$receipt")"
+          jq -e \
+            --arg reservation_sha256 "$activation_reservation_sha256" \
+            --argjson run_id "$ATTESTATION_RUN_ID" \
+            '.command == "workflow-dispatch-claim" and .reservation_sha256 == $reservation_sha256 and .run_id == $run_id and .accepted == true' \
+            "$claim" > /dev/null
+          jq -e \
+            --arg reservation_sha256 "$activation_reservation_sha256" \
+            --argjson run_id "$ATTESTATION_RUN_ID" \
+            '.command == "activation-evidence" and .reservation_receipt_sha256 == $reservation_sha256 and .run_id == $run_id and .accepted == true and .terminal_for_attempt == true' \
+            "$operation_receipt" > /dev/null
         env:
           GH_TOKEN: ${{ github.token }}
+      - name: Claim durable workflow reservation
+        if: ${{ inputs.reservation_sha256 != '' }}
+        shell: bash
+        env:
+          CLAIM_ENVIRONMENT: '"production-migration"'
+          DISPLAY_TITLE: migrate-${{ inputs.operation }}-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
+          WORKFLOW_FILE: migrate.yml
+        run: |
+          set -euo pipefail
+          umask 077
+          token_response="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=monitor-control")"
+          oidc_token="$(jq -er '.value' <<<"$token_response")"
+          jq -cn \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg workflow "$WORKFLOW_FILE" \
+            --arg display_title "$DISPLAY_TITLE" \
+            --arg head_sha "$EXPECTED_COMMIT_SHA" \
+            --arg approved_plan_sha256 "$EXPECTED_PLAN_SHA256" \
+            --arg activation_nonce "$ACTIVATION_NONCE" \
+            --arg dispatch_nonce "$DISPATCH_NONCE" \
+            --arg reservation_sha256 "$RESERVATION_SHA256" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            --argjson run_attempt "$GITHUB_RUN_ATTEMPT" \
+            --arg event "$GITHUB_EVENT_NAME" \
+            --arg ref "$GITHUB_REF" \
+            --argjson environment "$CLAIM_ENVIRONMENT" \
+            '{repository:$repository,workflow:$workflow,display_title:$display_title,head_sha:$head_sha,approved_plan_sha256:$approved_plan_sha256,activation_nonce:$activation_nonce,dispatch_nonce:$dispatch_nonce,reservation_sha256:$reservation_sha256,run_id:$run_id,run_attempt:$run_attempt,event:$event,ref:$ref,environment:$environment}' \
+            > "$RUNNER_TEMP/workflow-claim-request.json"
+          curl --fail --silent --show-error --request POST \
+            -H "Authorization: Bearer $oidc_token" \
+            -H "Content-Type: application/json" \
+            --data-binary @"$RUNNER_TEMP/workflow-claim-request.json" \
+            "${MONITOR_API_URL}/internal/release/workflow-dispatch-claim" \
+            > "$RUNNER_TEMP/workflow-claim-public-receipt.json"
+          jq -e \
+            --arg reservation_sha256 "$RESERVATION_SHA256" \
+            --argjson run_id "$GITHUB_RUN_ID" \
+            '.command == "workflow-dispatch-claim" and .reservation_sha256 == $reservation_sha256 and .run_id == $run_id and .accepted == true' \
+            "$RUNNER_TEMP/workflow-claim-public-receipt.json" > /dev/null
+          rm -f "$RUNNER_TEMP/workflow-claim-request.json"
       - name: Verify claimed durable reservation
-        if: ${{ !(inputs.operation == 'upgrade' && inputs.revision == '20260727_0010') }}
+        if: ${{ inputs.reservation_sha256 != '' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -287,7 +357,18 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
           MIGRATION_REVIEW_ROOT_B64: ${{ inputs.review_root_b64 }}
+          MIGRATION_REVIEW_ROOT_SHA256: ${{ inputs.review_root_sha256 }}
           MIGRATION_NO_SPEND_RECEIPT_B64: ${{ inputs.no_spend_receipt_b64 }}
+          MIGRATION_NO_SPEND_RECEIPT_SHA256: ${{ inputs.no_spend_receipt_sha256 }}
+          MIGRATION_CORRECTION_REVIEW_ROOT_B64: ${{ inputs.review_root_b64 }}
+          MIGRATION_CORRECTION_REVIEW_ROOT_SHA256: ${{ inputs.review_root_sha256 }}
+          MIGRATION_CORRECTION_NO_SPEND_RECEIPT_B64: ${{ inputs.no_spend_receipt_b64 }}
+          MIGRATION_CORRECTION_NO_SPEND_RECEIPT_SHA256: ${{ inputs.no_spend_receipt_sha256 }}
+          MIGRATION_CORRECTION_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          MIGRATION_CORRECTION_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+          MIGRATION_CORRECTION_ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
+          MIGRATION_CORRECTION_DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          MIGRATION_CORRECTION_ATTEMPT: ${{ inputs.attempt }}
           MIGRATION_FAILED_ATTEMPT_RECEIPT_B64: ${{ inputs.attempt1_failed_receipt_b64 }}
           MIGRATION_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
           MIGRATION_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
@@ -296,6 +377,8 @@ jobs:
           MIGRATION_ATTEMPT: ${{ inputs.attempt }}
           MIGRATION_ATTESTATION_RUN_ID: ${{ inputs.attestation_run_id }}
           MIGRATION_ATTESTATION_PATH: ${{ runner.temp }}/attestation/activation-attestation-generation-${{ inputs.attestation_generation }}.json
+          MIGRATION_ACTIVATION_ATTESTATION_PATH: ${{ runner.temp }}/attestation/activation-attestation-generation-${{ inputs.attestation_generation }}.json
+          MIGRATION_ACTIVATION_EVIDENCE_RECEIPT_PATH: ${{ runner.temp }}/attestation/activation-evidence-public-receipt.json
           MIGRATION_ATTESTATION_SHA256: ${{ inputs.attestation_sha256 }}
       - name: Verify exact resulting revision
         run: |
@@ -304,6 +387,57 @@ jobs:
           RESULT_FILE="$RUNNER_TEMP/alembic-result.txt" uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-result
         env:
           DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
+      - name: Export canonical 0010a correction receipt
+        if: ${{ inputs.operation == 'upgrade' && inputs.revision == '20260803_0010a' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+            --set=dispatch_nonce="$DISPATCH_NONCE" \
+            --command="SELECT convert_from(canonical_receipt, 'UTF8') FROM release_receipt_chain WHERE command='release-correction-0010a' AND dispatch_nonce=:'dispatch_nonce'::uuid" \
+            | tr -d '\r\n' > "$RUNNER_TEMP/operation.json"
+          jq -e \
+            --arg reviewed_sha "$EXPECTED_COMMIT_SHA" \
+            --arg dispatch_nonce "$DISPATCH_NONCE" \
+            '.command == "release-correction-0010a" and .reviewed_sha == $reviewed_sha and .dispatch_nonce == $dispatch_nonce and .accepted == true and .terminal_for_attempt == true' \
+            "$RUNNER_TEMP/operation.json" > /dev/null
+        env:
+          PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
+      - name: Upload terminal 0010a correction receipt
+        if: ${{ inputs.operation == 'upgrade' && inputs.revision == '20260803_0010a' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migrate-repair-0010a-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          path: ${{ runner.temp }}/operation.json
+          retention-days: 1
+          if-no-files-found: error
+      - name: Complete durable migration operation
+        if: ${{ inputs.reservation_sha256 != '' }}
+        run: |
+          uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
+            --api-url "${{ vars.MONITOR_API_URL }}" \
+            --command "${{ inputs.operation == 'upgrade' && 'migrate-0011' || 'migrate-0011-to-0010a' }}" \
+            --display-title "migrate-${{ inputs.operation }}-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}" \
+            --evidence "$RUNNER_TEMP/alembic-result.txt" \
+            --expected-plan-sha256 "${{ inputs.expected_plan_sha256 }}" \
+            --head-sha "${{ inputs.expected_commit_sha }}" \
+            --activation-nonce "${{ inputs.activation_nonce }}" \
+            --dispatch-nonce "${{ inputs.dispatch_nonce }}" \
+            --reservation-sha256 "${{ inputs.reservation_sha256 }}" \
+            --workflow migrate.yml \
+            --environment production-migration \
+            --attempt "${{ inputs.attempt }}" \
+            --json-out "$RUNNER_TEMP/operation.json"
+      - name: Upload terminal migration operation receipt
+        if: ${{ inputs.reservation_sha256 != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: migrate-${{ inputs.operation == 'upgrade' && '0011' || 'downgrade-0010a' }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          path: |
+            ${{ runner.temp }}/operation.json
+            ${{ runner.temp }}/workflow-claim-public-receipt.json
+          retention-days: 1
+          if-no-files-found: error
       - name: Verify failed operation remained at the safe revision
         if: ${{ failure() }}
         run: |

@@ -76,6 +76,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/release/workflow-operation-complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Complete */
+        post: operations["complete_internal_release_workflow_operation_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/daily-reconcile": {
         parameters: {
             query?: never;
@@ -2346,6 +2363,130 @@ export interface components {
             /** Workflow */
             workflow: string;
         };
+        /**
+         * WorkflowOperationCompleteRequest
+         * @description Claim-bound terminal success input with one public evidence digest.
+         */
+        WorkflowOperationCompleteRequest: {
+            /**
+             * Activation Nonce
+             * Format: uuid
+             */
+            activation_nonce: string;
+            /** Approved Plan Sha256 */
+            approved_plan_sha256: string;
+            /** Command */
+            command: string;
+            /**
+             * Dispatch Nonce
+             * Format: uuid
+             */
+            dispatch_nonce: string;
+            /** Display Title */
+            display_title: string;
+            /** Environment */
+            environment?: string | null;
+            /**
+             * Event
+             * @constant
+             */
+            event: "workflow_dispatch";
+            /** Evidence Sha256 */
+            evidence_sha256: string;
+            /** Head Sha */
+            head_sha: string;
+            /**
+             * Outcome
+             * @constant
+             */
+            outcome: "success";
+            /**
+             * Ref
+             * @constant
+             */
+            ref: "refs/heads/main";
+            /** Repository */
+            repository: string;
+            /** Reservation Sha256 */
+            reservation_sha256: string;
+            /** Run Attempt */
+            run_attempt: number;
+            /** Run Id */
+            run_id: number;
+            /** Workflow */
+            workflow: string;
+        };
+        /**
+         * WorkflowOperationCompleteResponse
+         * @description Schema-closed terminal receipt consumed by release verification.
+         */
+        WorkflowOperationCompleteResponse: {
+            /**
+             * Accepted
+             * @default true
+             * @constant
+             */
+            accepted: true;
+            /** Activation Nonce */
+            activation_nonce: string;
+            /** Approval Launch Sha256S */
+            approval_launch_sha256s: [
+                string,
+                string
+            ];
+            /** Approval Round Id */
+            approval_round_id: string;
+            /** Approved Plan Sha256 */
+            approved_plan_sha256: string;
+            /** Artifact Sha256 */
+            artifact_sha256: string;
+            /** Attempt */
+            attempt: number;
+            /** Command */
+            command: string;
+            /** Committed Revision */
+            committed_revision: string;
+            /** Dispatch Nonce */
+            dispatch_nonce: string;
+            /**
+             * Enum Residue
+             * @default false
+             * @constant
+             */
+            enum_residue: false;
+            /** Head Sha */
+            head_sha: string;
+            /** Predecessor Receipt Sha256 */
+            predecessor_receipt_sha256: string;
+            /** Reservation Receipt Sha256 */
+            reservation_receipt_sha256: string;
+            /**
+             * Retry Permitted
+             * @default false
+             * @constant
+             */
+            retry_permitted: false;
+            /** Reviewed Sha */
+            reviewed_sha: string;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** State After */
+            state_after: string;
+            /** State Before */
+            state_before: string;
+            /**
+             * Terminal For Attempt
+             * @default true
+             * @constant
+             */
+            terminal_for_attempt: true;
+        };
         /** _CollectionRetryPayload */
         _CollectionRetryPayload: {
             /** Reason */
@@ -2498,6 +2639,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowDispatchClaimReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_internal_release_workflow_operation_complete_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkflowOperationCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowOperationCompleteResponse"];
                 };
             };
             /** @description Validation Error */

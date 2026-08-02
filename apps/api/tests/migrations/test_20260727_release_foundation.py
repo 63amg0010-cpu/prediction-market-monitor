@@ -11,7 +11,7 @@ def test_0011_adds_generic_append_only_release_reservations() -> None:
     output = StringIO()
     config = Config(str(API_ROOT / "alembic.ini"), output_buffer=output)
 
-    command.upgrade(config, "20260727_0010:20260727_0011", sql=True)
+    command.upgrade(config, "20260727_0010:20260803_0010a", sql=True)
     ddl = output.getvalue()
 
     assert "release_receipt_chain" in ddl

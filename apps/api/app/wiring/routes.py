@@ -30,6 +30,10 @@ from app.api.routes.workflow_dispatch_claim import (
     UnavailableWorkflowDispatchClaimer,
     create_workflow_dispatch_claim_router,
 )
+from app.api.routes.workflow_operation_complete import (
+    UnavailableWorkflowOperationCompleter,
+    create_workflow_operation_complete_router,
+)
 from app.services.dashboard.sql_health import SqlAlchemyHealthProbe
 from app.services.dashboard.sql_reader import SqlAlchemyDashboardReader
 from app.services.identity.cron import CronCredentialVerifier
@@ -103,6 +107,12 @@ def include_application_routes(
         create_workflow_dispatch_claim_router(
             dependencies.workflow_dispatch_claimer
             or UnavailableWorkflowDispatchClaimer()
+        )
+    )
+    application.include_router(
+        create_workflow_operation_complete_router(
+            dependencies.workflow_operation_completer
+            or UnavailableWorkflowOperationCompleter()
         )
     )
     application.include_router(

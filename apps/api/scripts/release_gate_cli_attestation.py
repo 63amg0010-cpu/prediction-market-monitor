@@ -49,6 +49,8 @@ def run_attest(args: argparse.Namespace) -> int:
             measurement_receipt=read_document(args.measurement_receipt),
             attestation_generation=args.attestation_generation,
             database_time=clock(),
+            source_scope_version=args.source_scope_version,
+            predecessor_attestation_sha256=args.predecessor_attestation_sha256,
             public_evidence_urls=strings(args.public_evidence_url),
             expected_sha=args.expected_sha,
             expected_plan_sha256=args.expected_plan_sha256,

@@ -181,6 +181,8 @@ def test_public_attestation_is_closed_and_secret_upload_is_stdin_only() -> None:
         },
         attestation_generation=1,
         database_time=NOW,
+        source_scope_version="phase1-reviewed-v1",
+        predecessor_attestation_sha256=None,
         public_evidence_urls=(
             "https://github.com/63amg0010-cpu/prediction-market-monitor/actions",
         ),

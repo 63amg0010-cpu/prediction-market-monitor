@@ -91,6 +91,8 @@ def _bootstrap_request(**overrides: str | int) -> DispatchRequest:
         "attempt1_failed_receipt_sha256": "",
         "attempt1_failed_receipt_b64": "",
         "attestation_run_id": "",
+        "attestation_generation": 0,
+        "attestation_dispatch_nonce": "",
         "attestation_sha256": "",
         "reservation_sha256": "",
     }
@@ -120,6 +122,12 @@ def _post_ledger_request(
         "attempt1_failed_receipt_sha256": "",
         "attempt1_failed_receipt_b64": "",
         "attestation_run_id": "123" if revision == "20260727_0011" else "",
+        "attestation_generation": 1 if revision == "20260727_0011" else 0,
+        "attestation_dispatch_nonce": (
+            "33333333-3333-4333-8333-333333333333"
+            if revision == "20260727_0011"
+            else ""
+        ),
         "attestation_sha256": ARTIFACT_SHA if revision == "20260727_0011" else "",
         "reservation_sha256": "9" * 64,
     }
@@ -222,7 +230,9 @@ def test_attempt_two_requires_matching_failed_safe_receipt() -> None:
 def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None:
     # Given: the reviewed 0011 upgrade and 0011-to-0010 downgrade tuples.
     upgrade = _post_ledger_request("upgrade", "20260727_0011", "migrate-production")
-    downgrade = _post_ledger_request("downgrade", "20260727_0010", "rollback-manifold")
+    downgrade = _post_ledger_request(
+        "downgrade", "20260803_0010a", "rollback-manifold"
+    )
 
     # When: both post-ledger requests are validated.
     upgrade_result = validate_dispatch(
@@ -234,7 +244,10 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
 
     # Then: each yields only its exact quoted revision and operation.
     assert upgrade_result.alembic_argv[-2:] == ("upgrade", "20260727_0011")
-    assert downgrade_result.alembic_argv[-2:] == ("downgrade", "20260727_0010")
+    assert downgrade_result.alembic_argv[-2:] == (
+        "downgrade",
+        "20260803_0010a",
+    )
 
 
 @pytest.mark.parametrize(
@@ -254,7 +267,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
         ),
         _post_ledger_request(
             "downgrade",
-            "20260727_0010",
+            "20260803_0010a",
             "rollback-manifold",
             review_root_sha256="c" * 64,
         ),

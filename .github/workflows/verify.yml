@@ -198,7 +198,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: verify-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          name: verify-claim-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
           path: ${{ runner.temp }}/workflow-claim-public-receipt.json
           retention-days: 1
           if-no-files-found: error
@@ -250,6 +250,33 @@ jobs:
           MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
           MONITOR_CADENCE_RESULT_PATH: ${{ runner.temp }}/cadence-operation-result.json
           MONITOR_CADENCE_SLOT_KEY: ${{ env.CADENCE_SLOT_KEY }}
+      - name: Complete durable verifier operation
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
+            --api-url "${{ vars.MONITOR_API_URL }}" \
+            --command "${{ inputs.mode }}" \
+            --display-title "verify-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}" \
+            --evidence "$RUNNER_TEMP/cadence-operation-result.json" \
+            --expected-plan-sha256 "${{ inputs.expected_plan_sha256 }}" \
+            --head-sha "${{ inputs.expected_sha }}" \
+            --activation-nonce "${{ inputs.activation_nonce }}" \
+            --dispatch-nonce "${{ inputs.dispatch_nonce }}" \
+            --reservation-sha256 "${{ inputs.reservation_sha256 }}" \
+            --workflow verify.yml \
+            --environment production-verifier \
+            --attempt "${{ inputs.attempt }}" \
+            --json-out "$RUNNER_TEMP/operation.json"
+      - name: Upload terminal verifier operation receipt
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verify-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          path: |
+            ${{ runner.temp }}/operation.json
+            ${{ runner.temp }}/workflow-claim-public-receipt.json
+          retention-days: 1
+          if-no-files-found: error
       - name: Record durable cadence attempt
         id: cadence-record
         if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'cadence-retry') }}

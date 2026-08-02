@@ -203,7 +203,7 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ci-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          name: ci-claim-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
           path: ${{ runner.temp }}/workflow-claim-public-receipt.json
           retention-days: 1
           if-no-files-found: error
@@ -259,6 +259,34 @@ jobs:
             --base-sha "$BASE_SHA" \
             --reviewed-sha "$REVIEWED_SHA" \
             --wrapper ci
+
+      - name: Complete durable CI operation
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
+            --api-url "${{ vars.MONITOR_API_URL }}" \
+            --command ci \
+            --display-title "ci-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}" \
+            --evidence "$RUNNER_TEMP/workflow-claim-public-receipt.json" \
+            --expected-plan-sha256 "${{ inputs.expected_plan_sha256 }}" \
+            --head-sha "${{ inputs.expected_sha }}" \
+            --activation-nonce "${{ inputs.activation_nonce }}" \
+            --dispatch-nonce "${{ inputs.dispatch_nonce }}" \
+            --reservation-sha256 "${{ inputs.reservation_sha256 }}" \
+            --workflow ci.yml \
+            --attempt "${{ inputs.attempt }}" \
+            --json-out "$RUNNER_TEMP/operation.json"
+
+      - name: Upload terminal CI operation receipt
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          path: |
+            ${{ runner.temp }}/operation.json
+            ${{ runner.temp }}/workflow-claim-public-receipt.json
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Upload redacted local-QA receipts
         if: ${{ always() }}

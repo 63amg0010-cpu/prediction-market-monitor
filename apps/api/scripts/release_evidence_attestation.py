@@ -14,16 +14,18 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from scripts.activation_evidence_models import (
+    PublicActivationAttestation,
+    canonical_attestation_bytes,
+)
 from scripts.release_evidence_contracts import (
     PROVIDER_PLANS,
     PROVIDERS,
     AttestationArtifact,
     EvidenceHoldError,
-    PublicActivationAttestation,
-    RedactedRatio,
     SecretRunner,
 )
-from scripts.release_evidence_graph import canonical_bytes, receipt_sha256
+from scripts.release_evidence_graph import receipt_sha256
 from scripts.release_evidence_preflight_checks import require_bindings
 
 REPOSITORY = "63amg0010-cpu/prediction-market-monitor"
@@ -51,27 +53,6 @@ def _require_exact_captures(captures: Sequence[Mapping[str, object]]) -> None:
             or capture.get("add_ons_enabled") is not False
         ):
             raise EvidenceHoldError("provider_capture_rejected")
-
-
-def _ratios(free_tier: Mapping[str, object]) -> tuple[RedactedRatio, ...]:
-    dimensions = free_tier.get("dimensions")
-    if free_tier.get("accepted") is not True or not isinstance(dimensions, list):
-        raise EvidenceHoldError("free_tier_result_rejected")
-    ratios: list[RedactedRatio] = []
-    try:
-        for item in cast("list[object]", dimensions):
-            if not isinstance(item, dict):
-                raise EvidenceHoldError("free_tier_dimension_rejected")
-            value = cast("Mapping[str, object]", item)
-            payload = dict(value)
-            quota = payload.pop("quota", None)
-            _ = payload.setdefault("denominator", quota)
-            ratios.append(RedactedRatio.model_validate(payload))
-    except (KeyError, TypeError, ValueError, ValidationError) as error:
-        raise EvidenceHoldError("free_tier_dimension_rejected") from error
-    if not ratios:
-        raise EvidenceHoldError("free_tier_dimensions_missing")
-    return tuple(ratios)
 
 
 def _require_neutral_urls(urls: Sequence[str]) -> None:
@@ -135,6 +116,8 @@ def attest(
     measurement_receipt: Mapping[str, object],
     attestation_generation: int,
     database_time: datetime,
+    source_scope_version: str,
+    predecessor_attestation_sha256: str | None,
     public_evidence_urls: Sequence[str],
     expected_sha: str,
     expected_plan_sha256: str,
@@ -153,13 +136,14 @@ def attest(
         )
     if authorization_live_proof.get("accepted") is not True:
         raise EvidenceHoldError("authorization_live_proof_rejected")
+    if free_tier_result.get("accepted") is not True:
+        raise EvidenceHoldError("free_tier_result_rejected")
     if (
         measurement_receipt.get("accepted") is not True
         or measurement_receipt.get("transaction_read_only") is not True
     ):
         raise EvidenceHoldError("measurement_receipt_rejected")
     _require_neutral_urls(public_evidence_urls)
-    predecessor_sha = receipt_sha256(predecessor_receipt)
     capture_hashes = [receipt_sha256(capture) for capture in provider_captures]
     provenance = {
         "provider_capture_sha256s": capture_hashes,
@@ -167,19 +151,21 @@ def attest(
     }
     attestation = PublicActivationAttestation.model_validate(
         {
+            "schema_version": 1,
             "reviewed_sha": expected_sha,
             "activation_nonce": activation_nonce,
             "attestation_generation": attestation_generation,
-            "database_time": database_time,
+            "source_scope_version": source_scope_version,
             "authorization_evidence_sha256": receipt_sha256(authorization_live_proof),
             "free_tier_evidence_sha256": receipt_sha256(free_tier_result),
             "provenance_sha256": receipt_sha256(provenance),
-            "predecessor_receipt_sha256": predecessor_sha,
-            "redacted_ratios": _ratios(free_tier_result),
+            "predecessor_attestation_sha256": predecessor_attestation_sha256,
+            "captured_at": database_time,
+            "evidence_database_time": database_time,
             "public_evidence_urls": tuple(public_evidence_urls),
         }
     )
-    public_bytes = canonical_bytes(attestation.model_dump(mode="json"))
+    public_bytes = canonical_attestation_bytes(attestation)
     public_sha = hashlib.sha256(public_bytes).hexdigest()
     receipt = {
         **_base_receipt(
@@ -212,7 +198,7 @@ def attestation_secret_upload(
         parsed = PublicActivationAttestation.model_validate_json(canonical_attestation)
     except ValidationError as error:
         raise EvidenceHoldError("public_attestation_rejected") from error
-    canonical = canonical_bytes(parsed.model_dump(mode="json"))
+    canonical = canonical_attestation_bytes(parsed)
     digest = hashlib.sha256(canonical).hexdigest()
     if (
         not hmac.compare_digest(canonical, canonical_attestation)

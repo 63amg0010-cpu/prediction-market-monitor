@@ -83,6 +83,7 @@ class DispatchReserveRequest(BaseModel):
     attempt: int = Field(gt=0)
     json_out: RuntimePath
     git_ref: str = Field(default="refs/heads/main", pattern=r"^refs/heads/[^\s]+$")
+    operation_inputs: dict[str, str] = Field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,6 +234,7 @@ def _build_receipt(
         "display_title": request.display_title,
         "head_sha": request.head_sha,
         "ref": request.git_ref,
+        "operation_inputs": request.operation_inputs,
     }
     serialized = DispatchReservationReceipt.model_construct(
         _fields_set=set(body),
