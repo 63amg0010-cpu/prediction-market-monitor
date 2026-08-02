@@ -29,10 +29,17 @@ LAUNCH_ONE = "1" * 64
 LAUNCH_TWO = "2" * 64
 ACTIVATION_NONCE = UUID("11111111-1111-4111-8111-111111111111")
 DISPATCH_NONCE = UUID("22222222-2222-4222-8222-222222222222")
+TEST_DATABASE_CREDENTIAL = "local-contract-fixture"
 
 
 def _encoded(value: JsonValue) -> str:
     return base64.b64encode(canonical_body(value)).decode("ascii")
+
+
+def _database_url(driver: str, host: str, port: int) -> str:
+    return (
+        f"{driver}://user:{TEST_DATABASE_CREDENTIAL}@{host}:{port}/postgres"
+    )
 
 
 def _review_root() -> dict[str, JsonValue]:
@@ -334,19 +341,19 @@ def test_database_urls_require_one_matching_direct_or_session_5432_target() -> N
     ("migration", "dump", "restore"),
     [
         (
-            "postgresql+asyncpg://user:secret@pooler.supabase.com:6543/postgres",
-            "postgresql://user:secret@pooler.supabase.com:6543/postgres",
-            "postgresql://user:secret@pooler.supabase.com:6543/postgres",
+            _database_url("postgresql+asyncpg", "pooler.supabase.com", 6543),
+            _database_url("postgresql", "pooler.supabase.com", 6543),
+            _database_url("postgresql", "pooler.supabase.com", 6543),
         ),
         (
-            "postgresql+asyncpg://user:secret@pooler.supabase.com:5432/postgres",
-            "postgresql://user:secret@other.supabase.com:5432/postgres",
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+            _database_url("postgresql+asyncpg", "pooler.supabase.com", 5432),
+            _database_url("postgresql", "other.supabase.com", 5432),
+            _database_url("postgresql", "pooler.supabase.com", 5432),
         ),
         (
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+            _database_url("postgresql", "pooler.supabase.com", 5432),
+            _database_url("postgresql", "pooler.supabase.com", 5432),
+            _database_url("postgresql", "pooler.supabase.com", 5432),
         ),
     ],
 )
