@@ -13,6 +13,7 @@ import stat
 import subprocess
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from itertools import pairwise
 from pathlib import Path
 from typing import Final, assert_never, cast
 from urllib.parse import urlsplit
@@ -43,6 +44,12 @@ from apps.api.scripts.free_tier_evidence_contract import (
     PROVIDER_PLANS,
     PROVIDER_PROJECTS,
     PROVIDER_PUBLIC_SOURCE_URLS,
+    SUPABASE_CAPTURE_FIELDS,
+    SUPABASE_EXCLUSION_FIELDS,
+    SUPABASE_EXCLUSION_REASONS,
+    SUPABASE_EXCLUSION_URLS,
+    SUPABASE_PRIVATE_OBSERVATION_FIELDS,
+    SUPABASE_REQUIRED_EXCLUSIONS,
     VERIFIED_FIELDS,
 )
 from apps.api.scripts.free_tier_identities import (
@@ -114,6 +121,24 @@ FOCUS_FIELDS: Final = frozenset(
     }
 )
 APPROVAL_LAUNCH_COUNT: Final = 2
+POLICY_MAX_AGE: Final = timedelta(hours=2)
+
+
+def _capture_fields(provider: str) -> frozenset[str]:
+    return SUPABASE_CAPTURE_FIELDS if provider == "supabase" else CAPTURE_FIELDS
+
+
+def _private_observation_fields(provider: str) -> frozenset[str]:
+    return (
+        SUPABASE_PRIVATE_OBSERVATION_FIELDS
+        if provider == "supabase"
+        else PRIVATE_OBSERVATION_FIELDS
+    )
+
+
+def _capture_schema(provider: str, stage: str) -> str:
+    version = "v2" if provider == "supabase" else "v1"
+    return f"free-tier.provider-{stage}.{version}"
 
 
 class _WindowKind(StrEnum):
@@ -143,7 +168,9 @@ def _require_sha(value: JsonValue, field: str) -> str:
     return digest
 
 
-def _require_real_window(dimension: JsonObject, captured_at: datetime) -> str:
+def _require_real_window(
+    dimension: JsonObject, captured_at: datetime, provider: str
+) -> str:
     start = parse_time(dimension.get("window_start"), "dimension.window_start")
     end = parse_time(dimension.get("window_end"), "dimension.window_end")
     horizon_end = captured_at + timedelta(days=30)
@@ -170,11 +197,16 @@ def _require_real_window(dimension: JsonObject, captured_at: datetime) -> str:
             )
         case _WindowKind.BILLING_MONTH:
             next_month = (
-                datetime(start.year + 1, 1, 1, tzinfo=UTC)
+                datetime(start.year + 1, 1, start.day, tzinfo=UTC)
                 if start.month == DECEMBER
-                else datetime(start.year, start.month + 1, 1, tzinfo=UTC)
+                else datetime(start.year, start.month + 1, start.day, tzinfo=UTC)
             )
-            valid = aligned and start.hour == 0 and start.day == 1 and end == next_month
+            valid = (
+                aligned
+                and start.hour == 0
+                and end == next_month
+                and (provider == "supabase" or start.day == 1)
+            )
         case unreachable:
             assert_never(unreachable)
     if not valid:
@@ -190,13 +222,19 @@ def _require_real_window(dimension: JsonObject, captured_at: datetime) -> str:
 
 def _provider_metadata(capture: JsonObject) -> tuple[str, datetime]:
     keys = set(capture)
-    if frozenset(keys - OPTIONAL_CHAIN_FIELDS) != VERIFIED_FIELDS:
-        raise GateHoldError("verified provider capture schema is not closed")
-    if capture.get("schema") != "free-tier.provider-capture-verified.v1":
-        raise GateHoldError("verified provider capture schema mismatch")
     provider = require_string(capture.get("provider"), "provider")
     if provider not in PROVIDERS:
         raise GateHoldError("provider is unsupported")
+    policy_fields: frozenset[str] = (
+        frozenset({"non_applicable_dimensions"})
+        if provider == "supabase"
+        else frozenset()
+    )
+    expected_verified: frozenset[str] = VERIFIED_FIELDS | policy_fields
+    if frozenset(keys - OPTIONAL_CHAIN_FIELDS) != expected_verified:
+        raise GateHoldError("verified provider capture schema is not closed")
+    if capture.get("schema") != _capture_schema(provider, "capture-verified"):
+        raise GateHoldError("verified provider capture schema mismatch")
     if capture.get("public_project") != PROVIDER_PROJECTS[provider]:
         raise GateHoldError("provider public project mismatch")
     _ = _require_sha(capture.get("identity_sha256"), "identity_sha256")
@@ -211,6 +249,48 @@ def _provider_metadata(capture: JsonObject) -> tuple[str, datetime]:
     if capture.get("quota_status") != "known":
         raise GateHoldError("unknown or N/A quota is unsupported")
     return provider, captured_at
+
+
+def _validate_supabase_exclusions(
+    capture: JsonObject, captured_at: datetime
+) -> None:
+    raw_exclusions = capture.get("non_applicable_dimensions")
+    if not isinstance(raw_exclusions, list):
+        raise GateHoldError("Supabase non-applicable evidence is required")
+    names: set[str] = set()
+    account_status_sha256 = sha256_hex(
+        canonical_bytes(
+            {
+                "plan": capture.get("plan"),
+                "paid_enabled": capture.get("paid_enabled"),
+                "overage_enabled": capture.get("overage_enabled"),
+                "addon_enabled": False,
+            }
+        )
+    )
+    for raw in raw_exclusions:
+        exclusion = _exact_object(
+            raw,
+            SUPABASE_EXCLUSION_FIELDS,
+            "Supabase non-applicable evidence schema is invalid",
+        )
+        name = require_string(exclusion.get("name"), "exclusion.name")
+        if (
+            name not in SUPABASE_REQUIRED_EXCLUSIONS
+            or name in names
+            or exclusion.get("status") != "not_applicable"
+            or exclusion.get("reason_code") != SUPABASE_EXCLUSION_REASONS[name]
+            or exclusion.get("policy_url") != SUPABASE_EXCLUSION_URLS[name]
+            or exclusion.get("account_status_sha256") != account_status_sha256
+        ):
+            raise GateHoldError("Supabase non-applicable evidence is invalid")
+        _ = _require_sha(exclusion.get("policy_sha256"), "policy_sha256")
+        retrieved_at = parse_time(exclusion.get("retrieved_at"), "retrieved_at")
+        if not (retrieved_at <= captured_at < retrieved_at + POLICY_MAX_AGE):
+            raise GateHoldError("Supabase policy evidence is stale")
+        names.add(name)
+    if frozenset(names) != SUPABASE_REQUIRED_EXCLUSIONS:
+        raise GateHoldError("Supabase non-applicable evidence is incomplete")
 
 
 def _require_official_source(capture: JsonObject, provider: str) -> None:
@@ -245,6 +325,7 @@ def _provider_dimensions(
     dimensions: list[JsonObject] = []
     names: set[str] = set()
     windows_by_name: dict[str, set[str]] = {}
+    intervals_by_name: dict[str, list[tuple[datetime, datetime]]] = {}
     kind_by_name: dict[str, str] = {}
     for value in dimensions_value:
         if not isinstance(value, dict) or frozenset(value) != DIMENSION_FIELDS:
@@ -261,11 +342,17 @@ def _provider_dimensions(
                 raise GateHoldError(f"dimension operand is unknown: {name}.{field}")
         if value.get("status") != "known":
             raise GateHoldError("unknown or N/A dimension is unsupported")
-        window_id = _require_real_window(value, captured_at)
+        window_id = _require_real_window(value, captured_at, provider)
         seen_windows = windows_by_name.setdefault(name, set())
         if window_id in seen_windows:
             raise GateHoldError("provider dimension window is duplicated")
         seen_windows.add(window_id)
+        intervals_by_name.setdefault(name, []).append(
+            (
+                parse_time(value.get("window_start"), "dimension.window_start"),
+                parse_time(value.get("window_end"), "dimension.window_end"),
+            )
+        )
         derived = derive_added_usage_raw(value, capture["captured_at"])
         if value.get("added_usage_raw") != derived:
             raise GateHoldError("added usage does not match projection operands")
@@ -273,7 +360,23 @@ def _provider_dimensions(
     if frozenset(names) != PROVIDER_DIMENSIONS[provider]:
         raise GateHoldError("provider dimension set is incomplete or unexpected")
     for name, kind in kind_by_name.items():
-        if windows_by_name[name] != set(
+        if provider == "supabase":
+            intervals = sorted(intervals_by_name[name])
+            if (
+                not intervals
+                or not (intervals[0][0] <= captured_at < intervals[0][1])
+                or any(
+                    left[1] != right[0]
+                    for left, right in pairwise(intervals)
+                )
+                or intervals[-1][1] < captured_at + timedelta(days=30)
+                or any(
+                    start >= captured_at + timedelta(days=30)
+                    for start, _ in intervals
+                )
+            ):
+                raise GateHoldError("provider dimension window set is incomplete")
+        elif windows_by_name[name] != set(
             expected_window_ids(kind=kind, captured_at=capture["captured_at"])
         ):
             raise GateHoldError("provider dimension window set is incomplete")
@@ -285,6 +388,8 @@ def validate_verified_capture(capture: JsonObject) -> tuple[str, list[JsonObject
     provider, captured_at = _provider_metadata(capture)
     _require_official_source(capture, provider)
     dimensions = _provider_dimensions(capture, provider, captured_at)
+    if provider == "supabase":
+        _validate_supabase_exclusions(capture, captured_at)
     return provider, dimensions
 
 
@@ -661,7 +766,7 @@ def _validate_materialized_capture(
     provider: str,
     identity_envs: tuple[str, ...],
 ) -> None:
-    if frozenset(capture) != CAPTURE_FIELDS:
+    if frozenset(capture) != _capture_fields(provider):
         raise GateHoldError("provider capture schema is not closed")
     if capture.get("provider") != provider:
         raise GateHoldError("provider mismatch")
@@ -672,7 +777,7 @@ def _validate_materialized_capture(
     verified = with_receipt_sha(
         {
             **capture,
-            "schema": "free-tier.provider-capture-verified.v1",
+            "schema": _capture_schema(provider, "capture-verified"),
             "phase": "pre-0010",
             "reviewed_sha": "0" * 40,
             "input_sha256": sha256_hex(canonical_bytes(capture)),
@@ -993,6 +1098,7 @@ def _validate_official_response_binding(
                 "billing_window_end",
                 "source_url",
                 "dimensions",
+                "non_applicable_dimensions",
                 "connector_bindings",
             },
             "Supabase official payload is invalid",
@@ -1009,6 +1115,7 @@ def _validate_official_response_binding(
             raise GateHoldError("Supabase official payload is unrelated")
         connector_bindings = value.get("connector_bindings")
         raw_dimensions = value.get("dimensions")
+        raw_exclusions = value.get("non_applicable_dimensions")
         if (
             not isinstance(connector_bindings, list)
             or len(connector_bindings) != 4
@@ -1017,6 +1124,7 @@ def _validate_official_response_binding(
                 for binding in connector_bindings
             )
             or not isinstance(raw_dimensions, list)
+            or raw_exclusions != observation.get("non_applicable_dimensions")
         ):
             raise GateHoldError("Supabase official payload is invalid")
         captured = parse_time(observation.get("captured_at"), "captured_at")
@@ -1073,9 +1181,9 @@ def materialize_provider_capture(
     if not isinstance(observation_value, dict) or not isinstance(response_value, dict):
         raise GateHoldError("private provider JSON must be objects")
     observation = cast("JsonObject", observation_value)
-    if frozenset(observation) != PRIVATE_OBSERVATION_FIELDS:
+    if frozenset(observation) != _private_observation_fields(provider):
         raise GateHoldError("private provider observation schema is not closed")
-    if observation.get("schema") != "free-tier.provider-observation.v1":
+    if observation.get("schema") != _capture_schema(provider, "observation"):
         raise GateHoldError("private provider observation schema mismatch")
     if observation.get("provider") != provider:
         raise GateHoldError("provider mismatch")
@@ -1083,7 +1191,8 @@ def materialize_provider_capture(
     payloads = response.get("official_payloads")
     if (
         frozenset(response) != PRIVATE_RESPONSE_FIELDS
-        or response.get("schema") != "free-tier.provider-private-response.v1"
+        or response.get("schema")
+        != _capture_schema(provider, "private-response")
         or response.get("provider") != provider
         or response.get("observation_sha256")
         != sha256_hex(canonical_bytes(observation))
@@ -1108,7 +1217,7 @@ def materialize_provider_capture(
     )
     capture: JsonObject = {
         **observation,
-        "schema": "free-tier.provider-capture.v1",
+        "schema": _capture_schema(provider, "capture"),
         "source_url": PROVIDER_PUBLIC_SOURCE_URLS[provider],
         "identity_sha256": identity_digest(identity_envs),
         "identity_bindings": cast("JsonValue", identity_bindings(identity_envs)),
@@ -1152,7 +1261,8 @@ def import_provider_capture(  # noqa: PLR0913
     materialization_sha = require_receipt_sha(materialized, "materialization")
     if (
         frozenset(materialized) != MATERIALIZED_CAPTURE_FIELDS
-        or materialized.get("schema") != "free-tier.provider-capture-materialized.v1"
+        or materialized.get("schema")
+        != _capture_schema(provider, "capture-materialized")
         or materialized.get("reviewed_sha") != expected_sha
         or materialized.get("approved_plan_sha256") != expected_plan_sha256
         or materialized.get("activation_nonce") != activation_nonce
@@ -1164,9 +1274,9 @@ def import_provider_capture(  # noqa: PLR0913
     if not isinstance(raw_value, dict):
         raise GateHoldError("materialized provider capture is required")
     raw = cast("JsonObject", raw_value)
-    if frozenset(raw) != CAPTURE_FIELDS:
+    if frozenset(raw) != _capture_fields(provider):
         raise GateHoldError("provider capture schema is not closed")
-    if raw.get("schema") != "free-tier.provider-capture.v1":
+    if raw.get("schema") != _capture_schema(provider, "capture"):
         raise GateHoldError("provider capture schema mismatch")
     if raw.get("provider") != provider:
         raise GateHoldError("provider mismatch")
@@ -1177,7 +1287,7 @@ def import_provider_capture(  # noqa: PLR0913
     receipt = with_receipt_sha(
         {
             **raw,
-            "schema": "free-tier.provider-capture-verified.v1",
+            "schema": _capture_schema(provider, "capture-verified"),
             "phase": phase,
             "reviewed_sha": expected_sha,
             "materialization_predecessor_sha256": predecessor_sha,

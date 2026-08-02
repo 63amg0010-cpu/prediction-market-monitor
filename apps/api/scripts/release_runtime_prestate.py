@@ -6,12 +6,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, cast
 
-import anyio
 import yaml
 from sqlalchemy import text
 
@@ -72,6 +73,17 @@ async def _database_time(engine: AsyncEngine) -> datetime:
             return value
     finally:
         await engine.dispose()
+
+
+def _database_time_from_isolated_thread(engine: AsyncEngine) -> datetime:
+    """Keep a synchronous caller's current event loop untouched on Windows."""
+
+    def execute() -> datetime:
+        with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
+            return runner.run(_database_time(engine))
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        return executor.submit(execute).result()
 
 
 def capture_composite_prestate(
@@ -160,7 +172,7 @@ def capture_composite_prestate(
                 "environment": "production",
             }
         )
-    observed_at = anyio.run(_database_time, engine)
+    observed_at = _database_time_from_isolated_thread(engine)
     body: dict[str, object] = {
         "schema_version": 1,
         "command": "deployment-prestate",

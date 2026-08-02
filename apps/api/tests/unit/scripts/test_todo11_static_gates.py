@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, cast
 
 import anyio
-from anyio.to_thread import run_sync as run_sync_in_worker_thread
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,16 +52,9 @@ def _git_in_process_loop(root: Path, arguments: tuple[str, ...]) -> bytes:
     return result
 
 
-async def _git_in_worker(root: Path, arguments: tuple[str, ...]) -> bytes:
-    return await run_sync_in_worker_thread(_git_in_process_loop, root, arguments)
-
-
 def _git(root: Path, *arguments: str) -> str:
-    runner = asyncio.Runner(loop_factory=asyncio.SelectorEventLoop)
-    with runner:
-        local_loop = runner.get_loop()
-        raw = runner.run(_git_in_worker(root, arguments))
-    assert local_loop.is_closed()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        raw = executor.submit(_git_in_process_loop, root, arguments).result()
     return raw.decode().strip()
 
 

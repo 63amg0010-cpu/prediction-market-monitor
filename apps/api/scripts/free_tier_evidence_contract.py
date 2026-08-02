@@ -37,6 +37,22 @@ PRIVATE_OBSERVATION_FIELDS: Final = frozenset(
         "source_url",
     }
 )
+SUPABASE_POLICY_FIELD: Final = "non_applicable_dimensions"
+SUPABASE_CAPTURE_FIELDS: Final = CAPTURE_FIELDS | frozenset({SUPABASE_POLICY_FIELD})
+SUPABASE_PRIVATE_OBSERVATION_FIELDS: Final = PRIVATE_OBSERVATION_FIELDS | frozenset(
+    {SUPABASE_POLICY_FIELD}
+)
+SUPABASE_EXCLUSION_FIELDS: Final = frozenset(
+    {
+        "name",
+        "status",
+        "reason_code",
+        "policy_url",
+        "policy_sha256",
+        "retrieved_at",
+        "account_status_sha256",
+    }
+)
 VERIFIED_FIELDS: Final = CAPTURE_FIELDS | frozenset(
     {"phase", "reviewed_sha", "input_sha256", "receipt_sha256"}
 )
@@ -178,9 +194,30 @@ PROVIDER_DIMENSIONS: Final = {
             "supabase_mau",
             "supabase_edge_invocations",
             "supabase_realtime_messages",
-            "supabase_iops",
-            "supabase_logs_bytes",
         }
+    ),
+}
+SUPABASE_REQUIRED_EXCLUSIONS: Final = frozenset(
+    {
+        "supabase_disk_iops_addon",
+        "supabase_disk_throughput_addon",
+        "supabase_logs_ingest",
+    }
+)
+SUPABASE_EXCLUSION_REASONS: Final = {
+    "supabase_disk_iops_addon": "provisioned_disk_addon_not_enabled",
+    "supabase_disk_throughput_addon": "provisioned_disk_addon_not_enabled",
+    "supabase_logs_ingest": "billing_enforcement_not_live",
+}
+SUPABASE_EXCLUSION_URLS: Final = {
+    "supabase_disk_iops_addon": (
+        "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
+    ),
+    "supabase_disk_throughput_addon": (
+        "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
+    ),
+    "supabase_logs_ingest": (
+        "https://supabase.com/docs/guides/platform/manage-your-usage/logs"
     ),
 }
 PROVIDER_IDENTITY_ENVS: Final = {

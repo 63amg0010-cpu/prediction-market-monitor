@@ -38,6 +38,13 @@ class FreeTierProjection(Protocol):
     def expected_window_ids(*, kind: str, captured_at: str) -> frozenset[str]: ...
 
 
+class FreeTierCaptures(Protocol):
+    @staticmethod
+    def validate_verified_capture(
+        capture: JsonObject,
+    ) -> tuple[str, list[JsonObject]]: ...
+
+
 free_tier_verifier = cast(
     "FreeTierVerifier",
     cast("object", importlib.import_module("apps.api.scripts.free_tier_verifier")),
@@ -46,7 +53,10 @@ free_tier_projection = cast(
     "FreeTierProjection",
     cast("object", importlib.import_module("apps.api.scripts.free_tier_projection")),
 )
-free_tier_captures = importlib.import_module("apps.api.scripts.free_tier_captures")
+free_tier_captures = cast(
+    "FreeTierCaptures",
+    cast("object", importlib.import_module("apps.api.scripts.free_tier_captures")),
+)
 CAPTURE_FIELDS = cast(
     "frozenset[str]",
     importlib.import_module(
@@ -787,6 +797,58 @@ def test_ratio_at_70_percent_is_hold() -> None:
     # When / Then: equality is rejected.
     with pytest.raises(gate.GateHoldError, match="strictly below 70%"):
         _ = gate.dimension_result(observed=60, added_raw=8, quota=100)
+
+
+def test_supabase_v2_fixture_has_exact_numeric_and_policy_sets() -> None:
+    capture = cast(
+        "JsonObject",
+        json.loads((FIXTURES / "supabase-verified.json").read_text(encoding="utf-8")),
+    )
+    provider, dimensions = free_tier_captures.validate_verified_capture(capture)
+    exclusions = cast("list[JsonObject]", capture["non_applicable_dimensions"])
+
+    assert provider == "supabase"
+    assert {cast("str", value["name"]) for value in dimensions} == {
+        "supabase_database_bytes",
+        "supabase_uncached_egress_bytes",
+        "supabase_cached_egress_bytes",
+        "supabase_storage_bytes",
+        "supabase_mau",
+        "supabase_edge_invocations",
+        "supabase_realtime_messages",
+    }
+    assert {cast("str", value["name"]) for value in exclusions} == {
+        "supabase_disk_iops_addon",
+        "supabase_disk_throughput_addon",
+        "supabase_logs_ingest",
+    }
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["missing", "reason", "url", "zero_forgery", "stale", "v1"],
+)
+def test_supabase_policy_evidence_fails_closed(case: str) -> None:
+    capture = cast(
+        "JsonObject",
+        json.loads((FIXTURES / "supabase-verified.json").read_text(encoding="utf-8")),
+    )
+    exclusions = cast("list[JsonObject]", capture["non_applicable_dimensions"])
+    if case == "missing":
+        capture["non_applicable_dimensions"] = cast("JsonValue", exclusions[:-1])
+    elif case == "reason":
+        exclusions[0]["reason_code"] = "unknown"
+    elif case == "url":
+        exclusions[0]["policy_url"] = "https://example.com/forged"
+    elif case == "zero_forgery":
+        exclusions[0]["observed_usage"] = 0
+    elif case == "stale":
+        exclusions[0]["retrieved_at"] = "2026-07-27T21:59:59Z"
+    else:
+        capture["schema"] = "free-tier.provider-capture-verified.v1"
+
+    with pytest.raises(gate.GateHoldError):
+        _ = free_tier_captures.validate_verified_capture(capture)
 
 
 def test_measure_production_query_is_aggregate_read_only_and_unsampled() -> None:

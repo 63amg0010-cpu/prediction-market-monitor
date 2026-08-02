@@ -120,11 +120,16 @@ def _output(path: str) -> JsonObject:
 
 
 def _run_execute(args: argparse.Namespace, runtime: _Runtime) -> int:
-    runner = asyncio.Runner(loop_factory=asyncio.SelectorEventLoop)
-    with runner:
-        local_loop = runner.get_loop()
-        result = runner.run(_execute(args, runtime))
-    assert local_loop.is_closed()
+    def execute() -> tuple[int, bool]:
+        runner = asyncio.Runner(loop_factory=asyncio.SelectorEventLoop)
+        with runner:
+            local_loop = runner.get_loop()
+            result = runner.run(_execute(args, runtime))
+        return result, local_loop.is_closed()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result, loop_closed = executor.submit(execute).result()
+    assert loop_closed
     return result
 
 

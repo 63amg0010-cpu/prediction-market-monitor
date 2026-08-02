@@ -317,7 +317,6 @@ def test_ci_executes_shared_guarded_twenty_command_manifest() -> None:
     assert gate_env == {
         "ATTEMPT_DIR": "${{ steps.local-qa-bindings.outputs.attempt_dir }}",
         "BASE_SHA": "${{ steps.local-qa-bindings.outputs.base_sha }}",
-        "PYTHONTRACEMALLOC": "5",
         "REVIEWED_SHA": "${{ steps.local-qa-bindings.outputs.reviewed_sha }}",
     }
 

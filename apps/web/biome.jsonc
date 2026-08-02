@@ -46,6 +46,7 @@
       "!**/dist/**/*",
       "!**/build/**/*",
       "!**/.next/**/*",
+      "!**/.vercel/**/*",
       "!**/coverage/**/*",
       "!src/lib/api.generated.ts",
       "!next-env.d.ts"

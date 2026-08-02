@@ -250,7 +250,6 @@ jobs:
           ATTEMPT_DIR: ${{ steps.local-qa-bindings.outputs.attempt_dir }}
           BASE_SHA: ${{ steps.local-qa-bindings.outputs.base_sha }}
           REVIEWED_SHA: ${{ steps.local-qa-bindings.outputs.reviewed_sha }}
-          PYTHONTRACEMALLOC: "5"
         run: |
           uv run --frozen --package monitor-api python \
             apps/api/scripts/local_qa_orchestrator.py \
