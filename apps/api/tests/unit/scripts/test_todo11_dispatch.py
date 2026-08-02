@@ -66,9 +66,37 @@ def _root(command: str = "deployment-prestate") -> JsonObject:
 
 
 def _no_spend() -> JsonObject:
-    value = _root("no-spend-preflight")
-    value["predecessor_receipt_sha256"] = sha256_hex(canonical_bytes(_root()))
-    return value
+    return {
+        "schema_version": 1,
+        "command": "no-spend-preflight",
+        "reviewed_sha": SHA,
+        "approved_plan_sha256": PLAN,
+        "activation_nonce": NONCE,
+        "predecessor_receipt_sha256": sha256_hex(
+            canonical_bytes(_review_root())
+        ),
+        "billing_disabled": True,
+        "projection_below_70_percent": True,
+    }
+
+
+def _review_root() -> JsonObject:
+    return {
+        "schema_version": 1,
+        "command": "deployment-prestate",
+        "reviewed_sha": SHA,
+        "approved_plan_sha256": PLAN,
+        "approval_round_id": "d" * 64,
+        "approval_launch_sha256s": ["e" * 64, "f" * 64],
+        "activation_nonce": NONCE,
+        "public_provider_names": ["github", "supabase", "vercel"],
+        "protected_identity_hashes": {
+            "github_repository": "1" * 64,
+            "supabase_project": "2" * 64,
+            "vercel_api_project": "3" * 64,
+            "vercel_web_project": "4" * 64,
+        },
+    }
 
 
 def _reservation(base: str = "ci", attempt: int = 1) -> JsonObject:
@@ -112,7 +140,7 @@ def test_bootstrap_dispatch_uses_server_floor_and_exact_single_mutation() -> Non
         repository=REPOSITORY,
         workflow="migrate.yml",
         display_title=f"migrate-upgrade-20260727_0010-{DISPATCH}-attempt-1",
-        deployment_prestate=canonical_bytes(_root()),
+        deployment_prestate=canonical_bytes(_review_root()),
         no_spend_receipt=canonical_bytes(_no_spend()),
         failed_attempt_receipt=None,
         attempt=1,
@@ -134,6 +162,31 @@ def test_bootstrap_dispatch_uses_server_floor_and_exact_single_mutation() -> Non
     assert "HTTP" not in json.dumps(receipt)
 
 
+def test_bootstrap_dispatch_rejects_non_schema_no_spend_before_mutation() -> None:
+    runner = Runner(
+        lambda argv: ChildResult(0, "Date: Wed, 29 Jul 2026 01:02:03 GMT", "")
+    )
+    invalid = {**_no_spend(), "approval_round_id": "d" * 64}
+    with pytest.raises(HoldError, match="no_spend_receipt_invalid"):
+        _ = bootstrap_dispatch(
+            runner,
+            repository=REPOSITORY,
+            workflow="migrate.yml",
+            display_title=(
+                f"migrate-upgrade-20260727_0010-{DISPATCH}-attempt-1"
+            ),
+            deployment_prestate=canonical_bytes(_review_root()),
+            no_spend_receipt=canonical_bytes(invalid),
+            failed_attempt_receipt=None,
+            attempt=1,
+            expected_sha=SHA,
+            expected_plan_sha256=PLAN,
+            activation_nonce=NONCE,
+            dispatch_nonce=DISPATCH,
+        )
+    assert runner.calls == []
+
+
 def test_bootstrap_attempt_branch_has_no_hidden_retry() -> None:
     runner = Runner(
         lambda argv: ChildResult(0, "Date: Wed, 29 Jul 2026 01:02:03 GMT", "")
@@ -141,7 +194,7 @@ def test_bootstrap_attempt_branch_has_no_hidden_retry() -> None:
     with pytest.raises(HoldError, match="attempt_one_failed_receipt_forbidden"):
         _ = bootstrap_dispatch(
             runner, repository=REPOSITORY, workflow="migrate.yml", display_title="x",
-            deployment_prestate=canonical_bytes(_root()),
+            deployment_prestate=canonical_bytes(_review_root()),
             no_spend_receipt=canonical_bytes(_no_spend()),
             failed_attempt_receipt=canonical_bytes(_root()), attempt=1,
             expected_sha=SHA, expected_plan_sha256=PLAN,

@@ -33,7 +33,7 @@ from scripts.release_gate_cli_subprocess import DispatchSubprocessRunner
 def run_bootstrap_dispatch(args: argparse.Namespace) -> int:
     failed = (
         None
-        if args.failed_attempt_receipt is None
+        if args.failed_attempt_receipt in {None, "none"}
         else read_bytes(args.failed_attempt_receipt)
     )
     receipt = bootstrap_dispatch(

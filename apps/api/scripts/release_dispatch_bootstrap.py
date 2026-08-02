@@ -18,6 +18,18 @@ from scripts.release_dispatch_contracts import (
 )
 
 ATTEMPT_TWO = 2
+NO_SPEND_FIELDS = frozenset(
+    {
+        "schema_version",
+        "command",
+        "reviewed_sha",
+        "approved_plan_sha256",
+        "activation_nonce",
+        "predecessor_receipt_sha256",
+        "billing_disabled",
+        "projection_below_70_percent",
+    }
+)
 
 
 def _field_argv(inputs: list[tuple[str, object]]) -> tuple[str, ...]:
@@ -65,6 +77,29 @@ def _attempt_proof(attempt: int, failed: bytes | None) -> tuple[str, str]:
     return sha256_hex(failed), base64.b64encode(failed).decode()
 
 
+def _validate_no_spend(
+    value: JsonObject,
+    *,
+    expected_sha: str,
+    expected_plan_sha256: str,
+    activation_nonce: str,
+    root_sha256: str,
+) -> None:
+    """Validate the exact schema transported to the migration boundary."""
+    if (
+        frozenset(value) != NO_SPEND_FIELDS
+        or value.get("schema_version") != 1
+        or value.get("command") != "no-spend-preflight"
+        or value.get("reviewed_sha") != expected_sha
+        or value.get("approved_plan_sha256") != expected_plan_sha256
+        or value.get("activation_nonce") != activation_nonce
+        or value.get("predecessor_receipt_sha256") != root_sha256
+        or value.get("billing_disabled") is not True
+        or value.get("projection_below_70_percent") is not True
+    ):
+        hold("no_spend_receipt_invalid")
+
+
 def bootstrap_dispatch(  # noqa: PLR0913
     runner: ChildRunner,
     *,
@@ -83,17 +118,21 @@ def bootstrap_dispatch(  # noqa: PLR0913
     """Capture GitHub server time, then dispatch bootstrap exactly once."""
     root = load_canonical(deployment_prestate)
     no_spend = load_canonical(no_spend_receipt)
-    for value in (root, no_spend):
-        validate_common(
-            value,
-            expected_sha=expected_sha,
-            expected_plan_sha256=expected_plan_sha256,
-            activation_nonce=activation_nonce,
-        )
+    validate_common(
+        root,
+        expected_sha=expected_sha,
+        expected_plan_sha256=expected_plan_sha256,
+        activation_nonce=activation_nonce,
+    )
     root_sha = sha256_hex(deployment_prestate)
     no_spend_sha = sha256_hex(no_spend_receipt)
-    if no_spend.get("predecessor_receipt_sha256") != root_sha:
-        hold("no_spend_predecessor_mismatch")
+    _validate_no_spend(
+        no_spend,
+        expected_sha=expected_sha,
+        expected_plan_sha256=expected_plan_sha256,
+        activation_nonce=activation_nonce,
+        root_sha256=root_sha,
+    )
     failed_sha, failed_b64 = _attempt_proof(attempt, failed_attempt_receipt)
     expected_title = (
         f"migrate-upgrade-20260727_0010-{dispatch_nonce}-attempt-{attempt}"
