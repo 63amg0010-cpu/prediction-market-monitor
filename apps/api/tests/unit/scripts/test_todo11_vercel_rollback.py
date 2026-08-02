@@ -128,6 +128,19 @@ def inspect_json(kind: str = "api", source_sha: str = SHA) -> str:
     )
 
 
+def inspect_summary_json(kind: str = "api") -> str:
+    return json.dumps(
+        {
+            "id": "dpl_exact",
+            "url": API_URL,
+            "name": f"prediction-monitor-{kind}",
+            "contextName": TEAM_SLUG,
+            "target": "production",
+            "readyState": "READY",
+        }
+    )
+
+
 def successful_runner() -> RecordingRunner:
     return RecordingRunner(
         {
@@ -202,8 +215,13 @@ def test_restore_invokes_exact_pinned_pipeline_once_without_secret_argv() -> Non
     assert TOKEN_ENV not in argv_text
 
 
-def test_prestate_is_one_read_only_inspect_and_no_network_client() -> None:
-    runner = RecordingRunner({"inspect": ChildResult(0, inspect_json())})
+def test_prestate_uses_two_pinned_read_only_cli_reads() -> None:
+    runner = RecordingRunner(
+        {
+            "inspect": ChildResult(0, inspect_summary_json()),
+            "inspect-api": ChildResult(0, inspect_json()),
+        }
+    )
     request = VercelPrestateRequest(
         repository_root=TEST_ROOT,
         project_kind="api",
@@ -229,7 +247,17 @@ def test_prestate_is_one_read_only_inspect_and_no_network_client() -> None:
             "--scope",
             TEAM_SLUG,
             "--json",
-        )
+        ),
+        (
+            "npx",
+            "--yes",
+            "vercel@51.7.0",
+            "api",
+            "/v13/deployments/dpl_exact",
+            "--scope",
+            TEAM_SLUG,
+            "--raw",
+        ),
     ]
 
 

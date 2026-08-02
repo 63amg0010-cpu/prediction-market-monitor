@@ -131,27 +131,44 @@ def _validate_attempt_predecessor(request: VercelOperation) -> None:
         raise ReleaseHoldError("illegal_attempt_2_predecessor")
 
 
-def parse_inspect(
+def parse_inspect_reference(
     observation: Mapping[str, object],
     request: VercelOperation | VercelPrestateRequest,
-    *,
-    expected_source_sha: str | None,
-) -> tuple[str, str, str]:
+) -> tuple[str, str]:
+    """Validate the identity and state shared by inspect and deployment API."""
     deployment_id = observation.get("id")
     url = observation.get("url")
-    meta = observation.get("meta")
     if not isinstance(deployment_id, str) or not deployment_id:
         raise ReleaseHoldError("missing_deployment_id")
     if not isinstance(url, str) or not url.endswith(".vercel.app"):
         raise ReleaseHoldError("invalid_deployment_url")
     if observation.get("name") != request.project_name:
         raise ReleaseHoldError("inspect_wrong_project")
-    if observation.get("team") != request.team_slug:
+    team = observation.get("team")
+    team_slug = (
+        cast("Mapping[str, object]", team).get("slug")
+        if isinstance(team, Mapping)
+        else team
+    )
+    if team_slug is None:
+        team_slug = observation.get("contextName")
+    if team_slug != request.team_slug:
         raise ReleaseHoldError("inspect_wrong_team")
     if observation.get("target") != "production":
         raise ReleaseHoldError("not_production")
     if observation.get("readyState") != "READY":
         raise ReleaseHoldError("deployment_not_ready")
+    return deployment_id, url
+
+
+def parse_inspect(
+    observation: Mapping[str, object],
+    request: VercelOperation | VercelPrestateRequest,
+    *,
+    expected_source_sha: str | None,
+) -> tuple[str, str, str]:
+    deployment_id, url = parse_inspect_reference(observation, request)
+    meta = observation.get("meta")
     if not isinstance(meta, Mapping):
         raise ReleaseHoldError("missing_source_metadata")
     typed_meta = cast("Mapping[str, object]", meta)
@@ -205,6 +222,7 @@ def validate_alias_listing(
 
 __all__ = (
     "parse_inspect",
+    "parse_inspect_reference",
     "validate_alias_listing",
     "validate_health",
     "validate_identity",

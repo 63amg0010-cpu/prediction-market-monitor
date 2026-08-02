@@ -12,7 +12,21 @@ from scripts.release_vercel_models import (
     VercelPrestateRequest,
     seal_receipt,
 )
-from scripts.release_vercel_validation import parse_inspect, validate_identity
+from scripts.release_vercel_validation import (
+    parse_inspect,
+    parse_inspect_reference,
+    validate_identity,
+)
+
+
+def _json_object(result_stdout: str, reason: str) -> dict[str, object]:
+    try:
+        observed = cast("object", json.loads(result_stdout))
+    except json.JSONDecodeError as error:
+        raise ReleaseHoldError(reason) from error
+    if not isinstance(observed, dict):
+        raise ReleaseHoldError(reason)
+    return cast("dict[str, object]", observed)
 
 
 def run_vercel_prestate(
@@ -44,20 +58,47 @@ def run_vercel_prestate(
     if result.returncode:
         reason = "prestate_inspect_failed"
         raise ReleaseHoldError(reason)
-    try:
-        observed = cast("object", json.loads(result.stdout))
-    except json.JSONDecodeError as error:
-        reason = "prestate_inspect_failed_invalid_json"
-        raise ReleaseHoldError(reason) from error
-    if not isinstance(observed, dict):
-        reason = "prestate_inspect_failed_invalid_json"
+    typed = _json_object(
+        result.stdout,
+        "prestate_inspect_failed_invalid_json",
+    )
+    summary_id, summary_url = parse_inspect_reference(typed, request)
+    api_result = runner.execute(
+        ChildCommand(
+            stage="inspect-api",
+            argv=(
+                "npx",
+                "--yes",
+                f"vercel@{request.cli_version}",
+                "api",
+                f"/v13/deployments/{summary_id}",
+                "--scope",
+                request.team_slug,
+                "--raw",
+            ),
+            cwd=request.repository_root,
+            env={
+                "VERCEL_ORG_ID_FROM_ENV": request.org_id_env,
+                "VERCEL_PROJECT_ID_FROM_ENV": request.project_id_env,
+                "VERCEL_TOKEN_FROM_ENV": request.token_env,
+            },
+        )
+    )
+    if api_result.returncode:
+        reason = "prestate_deployment_api_failed"
         raise ReleaseHoldError(reason)
-    typed = cast("dict[str, object]", observed)
+    api_observation = _json_object(
+        api_result.stdout,
+        "prestate_deployment_api_failed_invalid_json",
+    )
     deployment_id, url, source_sha = parse_inspect(
-        typed,
+        api_observation,
         request,
         expected_source_sha=None,
     )
+    if deployment_id != summary_id or url != summary_url:
+        reason = "prestate_inspect_api_mismatch"
+        raise ReleaseHoldError(reason)
     return seal_receipt(
         {
             "schema_version": 1,
