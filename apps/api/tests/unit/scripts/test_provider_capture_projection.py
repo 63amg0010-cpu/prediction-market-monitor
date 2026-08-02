@@ -197,6 +197,9 @@ def _supabase_projection_input() -> dict[str, object]:
     traffic = cast("dict[str, object]", manifest["traffic"])
     captured = "2026-08-02T12:00:00Z"
     disk_url = "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
+    throughput_url = (
+        "https://supabase.com/docs/guides/platform/manage-your-usage/disk-throughput"
+    )
     logs_url = "https://supabase.com/docs/guides/platform/manage-your-usage/logs"
     snapshot = "\n".join(
         (
@@ -233,6 +236,15 @@ def _supabase_projection_input() -> dict[str, object]:
                 "snapshot": (
                     "Official Supabase Provisioned IOPS documentation: customers "
                     "opt in and are only charged for provisioned IOPS."
+                ),
+            },
+            {
+                "url": throughput_url,
+                "retrievedAt": captured,
+                "snapshot": (
+                    "Official Supabase Disk Throughput documentation: customers "
+                    "explicitly opt in for additional disk throughput; otherwise "
+                    "no charges apply."
                 ),
             },
             {
@@ -371,6 +383,7 @@ def test_supabase_projection_separates_numeric_usage_from_policy_exclusions() ->
     ("case", "expected"),
     [
         ("missing_policy", "supabase_policy_evidence_incomplete"),
+        ("throughput_paid", "supabase_policy_state_changed"),
         ("logs_live", "supabase_policy_state_changed"),
         ("stale_policy", "supabase_policy_evidence_invalid"),
         ("missing_numeric", "dashboard_dimension_missing"),
@@ -383,9 +396,11 @@ def test_supabase_projection_fails_closed_on_policy_or_account_drift(
     payload = _supabase_projection_input()
     policies = cast("list[dict[str, object]]", payload["policyEvidence"])
     if case == "missing_policy":
-        payload["policyEvidence"] = policies[:1]
+        payload["policyEvidence"] = policies[:2]
+    elif case == "throughput_paid":
+        policies[1]["snapshot"] = "Disk Throughput charges always apply."
     elif case == "logs_live":
-        policies[1]["snapshot"] = "Logs billing enforcement is now live."
+        policies[2]["snapshot"] = "Logs billing enforcement is now live."
     elif case == "stale_policy":
         policies[0]["retrievedAt"] = "2026-08-02T09:59:59Z"
     else:

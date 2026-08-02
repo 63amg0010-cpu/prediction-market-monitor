@@ -214,7 +214,7 @@ SUPABASE_EXCLUSION_URLS: Final = {
         "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
     ),
     "supabase_disk_throughput_addon": (
-        "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
+        "https://supabase.com/docs/guides/platform/manage-your-usage/disk-throughput"
     ),
     "supabase_logs_ingest": (
         "https://supabase.com/docs/guides/platform/manage-your-usage/logs"

@@ -822,11 +822,34 @@ def test_supabase_v2_fixture_has_exact_numeric_and_policy_sets() -> None:
         "supabase_disk_throughput_addon",
         "supabase_logs_ingest",
     }
+    assert {
+        cast("str", value["name"]): cast("str", value["policy_url"])
+        for value in exclusions
+    } == {
+        "supabase_disk_iops_addon": (
+            "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
+        ),
+        "supabase_disk_throughput_addon": (
+            "https://supabase.com/docs/guides/platform/manage-your-usage/disk-throughput"
+        ),
+        "supabase_logs_ingest": (
+            "https://supabase.com/docs/guides/platform/manage-your-usage/logs"
+        ),
+    }
 
 
 @pytest.mark.parametrize(
     "case",
-    ["missing", "reason", "url", "zero_forgery", "stale", "v1"],
+    [
+        "missing",
+        "reason",
+        "url",
+        "cross_mapped",
+        "account_hash",
+        "zero_forgery",
+        "stale",
+        "v1",
+    ],
 )
 def test_supabase_policy_evidence_fails_closed(case: str) -> None:
     capture = cast(
@@ -840,6 +863,10 @@ def test_supabase_policy_evidence_fails_closed(case: str) -> None:
         exclusions[0]["reason_code"] = "unknown"
     elif case == "url":
         exclusions[0]["policy_url"] = "https://example.com/forged"
+    elif case == "cross_mapped":
+        exclusions[1]["policy_url"] = exclusions[0]["policy_url"]
+    elif case == "account_hash":
+        exclusions[1]["account_status_sha256"] = "f" * 64
     elif case == "zero_forgery":
         exclusions[0]["observed_usage"] = 0
     elif case == "stale":

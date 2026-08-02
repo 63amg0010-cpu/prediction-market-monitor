@@ -60,7 +60,7 @@ const SUPABASE_EXCLUSIONS = new Map([
     "supabase_disk_throughput_addon",
     {
       reason: "provisioned_disk_addon_not_enabled",
-      url: "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops",
+      url: "https://supabase.com/docs/guides/platform/manage-your-usage/disk-throughput",
     },
   ],
   [
@@ -1108,7 +1108,7 @@ function currentIdentityBindings(provider) {
 }
 
 function buildSupabasePolicyExclusions(spec, projection) {
-  if (!Array.isArray(spec.policyEvidence) || spec.policyEvidence.length !== 2) {
+  if (!Array.isArray(spec.policyEvidence) || spec.policyEvidence.length !== 3) {
     hold("supabase_policy_evidence_incomplete");
   }
   const evidenceByUrl = new Map();
@@ -1134,6 +1134,9 @@ function buildSupabasePolicyExclusions(spec, projection) {
       (url.endsWith("/disk-iops") &&
         (!normalized.includes("provisioned iops") ||
           !(normalized.includes("opt in") || normalized.includes("only charged")))) ||
+      (url.endsWith("/disk-throughput") &&
+        (!normalized.includes("disk throughput") ||
+          !(normalized.includes("opt in") || normalized.includes("no charges apply")))) ||
       (url.endsWith("/logs") &&
         (!normalized.includes("coming soon") ||
           !(normalized.includes("billing") || normalized.includes("enforcement"))))
