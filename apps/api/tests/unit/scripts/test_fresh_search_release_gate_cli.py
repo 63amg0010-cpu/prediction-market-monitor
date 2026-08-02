@@ -4,6 +4,7 @@ import asyncio
 import os
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -231,12 +232,17 @@ def test_execute_encloses_lock_state_load_and_phase_in_one_transaction(
     )
 
     # When: the CLI runtime executes the phase.
-    with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
-        loop = runner.get_loop()
-        exit_code = runner.run(cli.execute(args))
+    def execute() -> tuple[int, bool]:
+        with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
+            loop = runner.get_loop()
+            exit_code = runner.run(cli.execute(args))
+        return exit_code, loop.is_closed()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        exit_code, loop_closed = executor.submit(execute).result()
 
     # Then: the lock and state read are inside one committing transaction.
-    assert loop.is_closed()
+    assert loop_closed
     assert exit_code == 0
     assert events == [
         "transaction_begin",

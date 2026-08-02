@@ -187,6 +187,87 @@ def _github_projection_input() -> dict[str, object]:
     }
 
 
+def _supabase_projection_input() -> dict[str, object]:
+    verified = cast(
+        "dict[str, object]",
+        json.loads((FIXTURES / "supabase-verified.json").read_text(encoding="utf-8")),
+    )
+    first_dimension = cast("list[dict[str, object]]", verified["dimensions"])[0]
+    manifest = cast("dict[str, object]", first_dimension["projection_operands"])
+    traffic = cast("dict[str, object]", manifest["traffic"])
+    captured = "2026-08-02T12:00:00Z"
+    disk_url = "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops"
+    logs_url = "https://supabase.com/docs/guides/platform/manage-your-usage/logs"
+    snapshot = "\n".join(
+        (
+            "URL: https://supabase.com/dashboard/org/private-supabase-org/usage",
+            "Project: redacted-supabase-project private-supabase-project",
+            "Plan: Free",
+            "Spend cap enabled",
+            "You won't be charged any extra for usage",
+            "Billing period: 2026-07-24T00:00:00Z through 2026-08-24T00:00:00Z",
+            "Database Size: 44040192 / 536870912 bytes",
+            "Egress (uncached): 13631488 / 5368709120 bytes",
+            "Cached Egress: 0 / 5368709120 bytes",
+            "Storage Size: 0 / 1073741824 bytes",
+            "Monthly Active Users: 0 / 50000 users",
+            "Edge Function Invocations: 0 / 500000 invocations",
+            "Realtime Messages: 0 / 2000000 messages",
+        )
+    )
+    return {
+        "provider": "supabase",
+        "publicProject": "redacted-supabase-project",
+        "dashboardSnapshot": snapshot,
+        "capturedAt": captured,
+        "billingWindowStart": "2026-07-24T00:00:00Z",
+        "billingWindowEnd": "2026-08-24T00:00:00Z",
+        "trailing30dPageRequests": traffic["trailing_30d_page_requests"],
+        "workloadManifest": manifest,
+        "connectorVerified": True,
+        "connectorBindings": ["1" * 64, "2" * 64, "3" * 64, "4" * 64],
+        "policyEvidence": [
+            {
+                "url": disk_url,
+                "retrievedAt": captured,
+                "snapshot": (
+                    "Official Supabase Provisioned IOPS documentation: customers "
+                    "opt in and are only charged for provisioned IOPS."
+                ),
+            },
+            {
+                "url": logs_url,
+                "retrievedAt": captured,
+                "snapshot": (
+                    "Official Supabase Logs documentation: Coming soon; billing "
+                    "enforcement is not live."
+                ),
+            },
+        ],
+    }
+
+
+def _run_supabase_projection(payload: dict[str, object]) -> object:
+    source = f"""
+      import {{ buildSupabaseOfficialDocument, projectProviderCapture }} from {json.dumps(_module_url())};
+      let input = '';
+      for await (const chunk of process.stdin) input += chunk;
+      const value = JSON.parse(input);
+      try {{
+        const officialPayloads = buildSupabaseOfficialDocument(value);
+        process.stdout.write(JSON.stringify(projectProviderCapture({{...value, officialPayloads}})));
+      }} catch (error) {{ process.stdout.write(JSON.stringify({{error: error.code}})); }}
+    """
+    return _node(
+        source,
+        payload,
+        env={
+            "SUPABASE_ORG_ID": "private-supabase-org",
+            "SUPABASE_PROJECT_ID": "private-supabase-project",
+        },
+    )
+
+
 def test_javascript_added_usage_matches_python_byte_for_byte() -> None:
     verified = json.loads(
         (FIXTURES / "github-verified.json").read_text(encoding="utf-8")
@@ -253,6 +334,72 @@ def test_project_provider_capture_is_schema_closed_and_threshold_bound() -> None
     assert (
         projected[0]["added_usage_raw"] == verified["dimensions"][0]["added_usage_raw"]
     )
+
+
+def test_supabase_projection_separates_numeric_usage_from_policy_exclusions() -> None:
+    result = cast("dict[str, object]", _run_supabase_projection(_supabase_projection_input()))
+    assert "error" not in result
+    observation = cast("dict[str, object]", result["observation"])
+    response = cast("dict[str, object]", result["response"])
+    dimensions = cast("list[dict[str, object]]", observation["dimensions"])
+    exclusions = cast(
+        "list[dict[str, object]]", observation["non_applicable_dimensions"]
+    )
+
+    assert observation["schema"] == "free-tier.provider-observation.v2"
+    assert response["schema"] == "free-tier.provider-private-response.v2"
+    assert len(dimensions) == 14
+    assert {item["name"] for item in dimensions} == {
+        "supabase_database_bytes",
+        "supabase_uncached_egress_bytes",
+        "supabase_cached_egress_bytes",
+        "supabase_storage_bytes",
+        "supabase_mau",
+        "supabase_edge_invocations",
+        "supabase_realtime_messages",
+    }
+    assert {item["name"] for item in exclusions} == {
+        "supabase_disk_iops_addon",
+        "supabase_disk_throughput_addon",
+        "supabase_logs_ingest",
+    }
+    assert all(item["status"] == "not_applicable" for item in exclusions)
+    assert all("observed_usage" not in item and "quota" not in item for item in exclusions)
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("missing_policy", "supabase_policy_evidence_incomplete"),
+        ("logs_live", "supabase_policy_state_changed"),
+        ("stale_policy", "supabase_policy_evidence_invalid"),
+        ("missing_numeric", "dashboard_dimension_missing"),
+        ("paid_guard", "dashboard_billing_guard_missing"),
+    ],
+)
+def test_supabase_projection_fails_closed_on_policy_or_account_drift(
+    case: str, expected: str
+) -> None:
+    payload = _supabase_projection_input()
+    policies = cast("list[dict[str, object]]", payload["policyEvidence"])
+    if case == "missing_policy":
+        payload["policyEvidence"] = policies[:1]
+    elif case == "logs_live":
+        policies[1]["snapshot"] = "Logs billing enforcement is now live."
+    elif case == "stale_policy":
+        policies[0]["retrievedAt"] = "2026-08-02T09:59:59Z"
+    else:
+        snapshot = cast("str", payload["dashboardSnapshot"])
+        if case == "missing_numeric":
+            payload["dashboardSnapshot"] = snapshot.replace(
+                "Realtime Messages:", "Realtime unavailable:", 1
+            )
+        else:
+            payload["dashboardSnapshot"] = snapshot.replace(
+                "You won't be charged any extra for usage", "Paid usage available", 1
+            )
+    result = cast("dict[str, object]", _run_supabase_projection(payload))
+    assert result == {"error": expected}
 
 
 def test_private_identity_values_enable_processless_browser_projection() -> None:

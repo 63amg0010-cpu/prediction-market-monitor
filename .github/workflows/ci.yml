@@ -328,7 +328,7 @@ jobs:
           VERCEL_PROJECT_ID: ${{ secrets[matrix.project_secret] }}
 
   deploy-production:
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PRODUCTION_AUTODEPLOY == 'enabled' }}
     needs: ci
     runs-on: ubuntu-latest
     timeout-minutes: 15

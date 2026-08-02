@@ -11,28 +11,38 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
+
+from apps.api.scripts.free_tier_domain import JsonObject, JsonValue, load_json
+
 if TYPE_CHECKING:
     from apps.api.scripts import free_tier_gate as gate
 else:
-    sys.path.insert(0, str(Path(__file__).resolve().parents[5]))
     gate = importlib.import_module("apps.api.scripts.free_tier_gate")
 
 
 class FreeTierVerifier(Protocol):
     @staticmethod
-    def require_content_addressed(document: gate.JsonObject, label: str) -> None: ...
+    def require_content_addressed(document: JsonObject, label: str) -> None: ...
 
     @staticmethod
     def require_measurement_contract(
-        manifest: gate.JsonObject,
-        measurements: gate.JsonObject,
-        production: gate.JsonObject,
+        manifest: JsonObject,
+        measurements: JsonObject,
+        production: JsonObject,
     ) -> None: ...
 
 
 class FreeTierProjection(Protocol):
     @staticmethod
     def expected_window_ids(*, kind: str, captured_at: str) -> frozenset[str]: ...
+
+
+class FreeTierCaptures(Protocol):
+    @staticmethod
+    def validate_verified_capture(
+        capture: JsonObject,
+    ) -> tuple[str, list[JsonObject]]: ...
 
 
 free_tier_verifier = cast(
@@ -43,7 +53,10 @@ free_tier_projection = cast(
     "FreeTierProjection",
     cast("object", importlib.import_module("apps.api.scripts.free_tier_projection")),
 )
-free_tier_captures = importlib.import_module("apps.api.scripts.free_tier_captures")
+free_tier_captures = cast(
+    "FreeTierCaptures",
+    cast("object", importlib.import_module("apps.api.scripts.free_tier_captures")),
+)
 CAPTURE_FIELDS = cast(
     "frozenset[str]",
     importlib.import_module(
@@ -60,12 +73,15 @@ def _sha(value: str) -> str:
 
 
 @pytest.fixture(autouse=True)
-def _private_windows_acl(monkeypatch: pytest.MonkeyPatch) -> None:
+def private_windows_acl(monkeypatch: pytest.MonkeyPatch) -> None:
     if os.name == "nt":
+        def allow_acl(_path: Path) -> bool:
+            return True
+
         monkeypatch.setattr(
             free_tier_captures,
             "_windows_acl_owner_only",
-            lambda _path: True,
+            allow_acl,
         )
 
 
@@ -76,13 +92,13 @@ def _write_deployment_root(
     command: str = "deployment-prestate",
 ) -> Path:
     path = tmp_path / f"{command}.json"
-    common: gate.JsonObject = {
+    common: JsonObject = {
         "reviewed_sha": "a" * 40,
         "approved_plan_sha256": plan_sha,
         "activation_nonce": "11111111-1111-4111-8111-111111111111",
     }
     if command == "bootstrap-verify":
-        root: gate.JsonObject = {
+        root: JsonObject = {
             "schema_version": 1,
             "command": command,
             "attempt": 1,
@@ -137,12 +153,12 @@ def _write_deployment_root(
 
 def _private_github_capture_inputs(
     tmp_path: Path,
-) -> tuple[Path, Path, Path, Path, gate.JsonObject]:
+) -> tuple[Path, Path, Path, Path, JsonObject]:
     verified = cast(
-        "gate.JsonObject",
+        "JsonObject",
         json.loads((FIXTURES / "github-verified.json").read_text(encoding="utf-8")),
     )
-    observation: gate.JsonObject = {
+    observation: JsonObject = {
         "schema": "free-tier.provider-observation.v1",
         "provider": verified["provider"],
         "public_project": verified["public_project"],
@@ -164,7 +180,7 @@ def _private_github_capture_inputs(
     output_path = tmp_path / "github-redacted.json"
     captured = datetime.fromisoformat(cast("str", verified["captured_at"]))
     current: dict[str, int] = {}
-    for raw in cast("list[gate.JsonObject]", verified["dimensions"]):
+    for raw in cast("list[JsonObject]", verified["dimensions"]):
         start = datetime.fromisoformat(cast("str", raw["window_start"]))
         end = datetime.fromisoformat(cast("str", raw["window_end"]))
         if start <= captured < end:
@@ -322,19 +338,22 @@ def test_materialize_provider_capture_writes_only_redacted_schema(
     )
 
     materialized = cast(
-        "gate.JsonObject",
+        "JsonObject",
         json.loads(output.read_text(encoding="utf-8")),
     )
-    redacted = cast("gate.JsonObject", materialized["capture"])
+    redacted = cast("JsonObject", materialized["capture"])
     assert materialized["schema"] == "free-tier.provider-capture-materialized.v1"
     assert redacted["schema"] == "free-tier.provider-capture.v1"
     assert set(redacted) == CAPTURE_FIELDS
     assert redacted["response_sha256"] == gate.sha256_hex(raw_response.read_bytes())
     assert redacted["screenshot_sha256"] == gate.sha256_hex(screenshot.read_bytes())
-    assert redacted["source_url_sha256"] == gate.sha256_hex(
-        b"https://api.github.com/repos/private-account/private-repo"
-        b"?access_token=private-url-secret-sentinel"
+    private_source_url = b"".join(
+        (
+            b"https://api.github.com/repos/private-account/private-repo",
+            b"?access_token=private-url-secret-sentinel",
+        )
     )
+    assert redacted["source_url_sha256"] == gate.sha256_hex(private_source_url)
     rendered = output.read_text(encoding="utf-8")
     assert protected_identity not in rendered
     assert "actions_linux" not in rendered
@@ -351,7 +370,7 @@ def test_materialize_provider_capture_writes_only_redacted_schema(
         expected_sha="a" * 40,
         expected_plan_sha256="b" * 64,
         activation_nonce="11111111-1111-4111-8111-111111111111",
-        predecessor=gate.load_json(predecessor),
+        predecessor=load_json(predecessor),
         phase="pre-0010",
     )
     assert imported["schema"] == "free-tier.provider-capture-verified.v1"
@@ -410,7 +429,7 @@ def test_materialize_and_import_accept_later_verified_predecessors(
         )
         == 0
     )
-    predecessor = gate.load_json(predecessor_path)
+    predecessor = load_json(predecessor_path)
     imported = gate.import_provider_capture(
         provider="github",
         input_path=output,
@@ -499,14 +518,14 @@ def test_materialize_rejects_unsafe_bootstrap_receipt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     field: str,
-    value: gate.JsonValue,
+    value: JsonValue,
 ) -> None:
     observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
         tmp_path
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     predecessor = _write_deployment_root(tmp_path, command="bootstrap-verify")
-    document = gate.load_json(predecessor)
+    document = load_json(predecessor)
     document[field] = value
     _ = predecessor.write_text(json.dumps(document), encoding="utf-8")
     with pytest.raises(gate.GateHoldError, match="predecessor is invalid"):
@@ -570,7 +589,7 @@ def test_materialize_provider_capture_rejects_extra_or_unofficial_observation(
     observation["source_url"] = "https://example.com/private"
     _ = observation_path.write_text(json.dumps(observation), encoding="utf-8")
     response_document = cast(
-        "gate.JsonObject",
+        "JsonObject",
         json.loads(raw_response.read_text(encoding="utf-8")),
     )
     response_document["observation_sha256"] = gate.sha256_hex(
@@ -621,10 +640,10 @@ def test_materialize_provider_capture_rejects_official_counter_substitution(
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     response = cast(
-        "gate.JsonObject", json.loads(raw_response.read_text(encoding="utf-8"))
+        "JsonObject", json.loads(raw_response.read_text(encoding="utf-8"))
     )
-    payloads = cast("list[gate.JsonObject]", response["official_payloads"])
-    items = cast("list[gate.JsonObject]", payloads[3]["value"])
+    payloads = cast("list[JsonObject]", response["official_payloads"])
+    items = cast("list[JsonObject]", payloads[3]["value"])
     items[0]["netQuantity"] = cast("int", items[0]["netQuantity"]) + 1
     _ = raw_response.write_text(json.dumps(response), encoding="utf-8")
     raw_response.chmod(0o600)
@@ -650,10 +669,13 @@ def test_materialize_provider_capture_rejects_unsafe_private_input(
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
 
     if os.name == "nt":
+        def deny_acl(_path: Path) -> bool:
+            return False
+
         monkeypatch.setattr(
             free_tier_captures,
             "_windows_acl_owner_only",
-            lambda _path: False,
+            deny_acl,
         )
         message = "Windows ACL"
     else:
@@ -777,6 +799,58 @@ def test_ratio_at_70_percent_is_hold() -> None:
         _ = gate.dimension_result(observed=60, added_raw=8, quota=100)
 
 
+def test_supabase_v2_fixture_has_exact_numeric_and_policy_sets() -> None:
+    capture = cast(
+        "JsonObject",
+        json.loads((FIXTURES / "supabase-verified.json").read_text(encoding="utf-8")),
+    )
+    provider, dimensions = free_tier_captures.validate_verified_capture(capture)
+    exclusions = cast("list[JsonObject]", capture["non_applicable_dimensions"])
+
+    assert provider == "supabase"
+    assert {cast("str", value["name"]) for value in dimensions} == {
+        "supabase_database_bytes",
+        "supabase_uncached_egress_bytes",
+        "supabase_cached_egress_bytes",
+        "supabase_storage_bytes",
+        "supabase_mau",
+        "supabase_edge_invocations",
+        "supabase_realtime_messages",
+    }
+    assert {cast("str", value["name"]) for value in exclusions} == {
+        "supabase_disk_iops_addon",
+        "supabase_disk_throughput_addon",
+        "supabase_logs_ingest",
+    }
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["missing", "reason", "url", "zero_forgery", "stale", "v1"],
+)
+def test_supabase_policy_evidence_fails_closed(case: str) -> None:
+    capture = cast(
+        "JsonObject",
+        json.loads((FIXTURES / "supabase-verified.json").read_text(encoding="utf-8")),
+    )
+    exclusions = cast("list[JsonObject]", capture["non_applicable_dimensions"])
+    if case == "missing":
+        capture["non_applicable_dimensions"] = cast("JsonValue", exclusions[:-1])
+    elif case == "reason":
+        exclusions[0]["reason_code"] = "unknown"
+    elif case == "url":
+        exclusions[0]["policy_url"] = "https://example.com/forged"
+    elif case == "zero_forgery":
+        exclusions[0]["observed_usage"] = 0
+    elif case == "stale":
+        exclusions[0]["retrieved_at"] = "2026-07-27T21:59:59Z"
+    else:
+        capture["schema"] = "free-tier.provider-capture-verified.v1"
+
+    with pytest.raises(gate.GateHoldError):
+        _ = free_tier_captures.validate_verified_capture(capture)
+
+
 def test_measure_production_query_is_aggregate_read_only_and_unsampled() -> None:
     # Given: the SQL contract used by Production measurement.
     # When: its statements are inspected.
@@ -803,7 +877,7 @@ def test_provider_capture_rejects_direct_unmaterialized_import(
 ) -> None:
     # Given: a hand-authored redacted capture without a root-bound materialization.
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "expected")
-    capture: gate.JsonObject = {
+    capture: JsonObject = {
         "schema": "free-tier.provider-capture.v1",
         "provider": "github",
         "public_project": "63amg0010-cpu/prediction-market-monitor",
@@ -841,7 +915,7 @@ def test_provider_capture_rejects_wrong_identity_env_names_before_hashing(
 ) -> None:
     # Given: a capture with a self-consistent digest for an arbitrary env name.
     monkeypatch.setenv("ARBITRARY_PROJECT_ID", "foreign")
-    capture: gate.JsonObject = {
+    capture: JsonObject = {
         "schema": "free-tier.provider-capture.v1",
         "provider": "github",
         "public_project": "63amg0010-cpu/prediction-market-monitor",
@@ -902,7 +976,7 @@ def test_provider_capture_rejects_wrong_identity_env_count_or_order(
 
 def test_receipt_hash_is_content_addressed() -> None:
     # Given: an unhashed schema-closed receipt body.
-    body: gate.JsonObject = {
+    body: JsonObject = {
         "schema": "free-tier.test.v1",
         "accepted": True,
     }
@@ -917,7 +991,7 @@ def test_receipt_hash_is_content_addressed() -> None:
 
 def test_canonical_bytes_matches_cross_tool_jcs_number_vector() -> None:
     # Given: values where sorted orjson diverges from ECMAScript/JCS numbers.
-    value: gate.JsonObject = {
+    value: JsonObject = {
         "numbers": [1.0, 1e-6, 1e-7, 1e20, 1e21],
         "literals": [None, True, False],
     }
@@ -944,7 +1018,7 @@ def test_verifier_rejects_content_address_drift() -> None:
 
 def test_verifier_rejects_writable_or_sampled_production_aggregate() -> None:
     # Given: otherwise exact manifest/local operands and an unsafe DB aggregate.
-    manifest: gate.JsonObject = {
+    manifest: JsonObject = {
         "schema": "free-tier.quota-manifest.v1",
         "phase": "pre-0010",
         "reviewed_sha": "a" * 40,
@@ -962,7 +1036,7 @@ def test_verifier_rejects_writable_or_sampled_production_aggregate() -> None:
         "dimensions": [],
         "receipt_sha256": "a" * 64,
     }
-    local: gate.JsonObject = {
+    local: JsonObject = {
         "fixture_row_count": 4_800,
         "fixture_title_body_utf8_bytes": 60 * MIB,
         "page_request_equivalent": 10_000,

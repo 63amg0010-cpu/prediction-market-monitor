@@ -277,7 +277,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901
             )
             receipt = with_receipt_sha(
                 {
-                    "schema": "free-tier.provider-capture-materialized.v1",
+                    "schema": (
+                        "free-tier.provider-capture-materialized.v2"
+                        if _string(values, "provider") == "supabase"
+                        else "free-tier.provider-capture-materialized.v1"
+                    ),
                     "capture": capture,
                     "reviewed_sha": _string(values, "expected-sha"),
                     "phase": phase,

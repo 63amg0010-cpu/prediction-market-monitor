@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -73,10 +74,15 @@ ADMIN_URL = "postgresql+asyncpg://qa:redaction-sentinel@127.0.0.1/postgres"
 
 
 def _run_isolated[T](awaitable: Coroutine[object, object, T]) -> T:
-    loop = asyncio.SelectorEventLoop()
-    with asyncio.Runner(loop_factory=lambda: loop) as runner:
-        result = runner.run(awaitable)
-    assert loop.is_closed()
+    def execute() -> tuple[T, bool]:
+        loop = asyncio.SelectorEventLoop()
+        with asyncio.Runner(loop_factory=lambda: loop) as runner:
+            result = runner.run(awaitable)
+        return result, loop.is_closed()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        result, loop_closed = executor.submit(execute).result()
+    assert loop_closed
     return result
 
 
@@ -901,6 +907,7 @@ def test_reprovision_holds_lock_across_drop_create_upgrade_and_verify(
     assert events == [
         "connect",
         "SELECT pg_advisory_lock(hashtext(:key))",
+        "DO $$",
         'DROP DATABASE IF EXISTS "monitor_migration_qa" WITH (FORCE)',
         'CREATE DATABASE "monitor_migration_qa"',
         "upgrade:20260726_0009",

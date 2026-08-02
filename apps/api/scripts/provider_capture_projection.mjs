@@ -46,10 +46,32 @@ const EXPECTED_DIMENSIONS = {
     "supabase_mau",
     "supabase_edge_invocations",
     "supabase_realtime_messages",
-    "supabase_iops",
-    "supabase_logs_bytes",
   ]),
 };
+const SUPABASE_EXCLUSIONS = new Map([
+  [
+    "supabase_disk_iops_addon",
+    {
+      reason: "provisioned_disk_addon_not_enabled",
+      url: "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops",
+    },
+  ],
+  [
+    "supabase_disk_throughput_addon",
+    {
+      reason: "provisioned_disk_addon_not_enabled",
+      url: "https://supabase.com/docs/guides/platform/manage-your-usage/disk-iops",
+    },
+  ],
+  [
+    "supabase_logs_ingest",
+    {
+      reason: "billing_enforcement_not_live",
+      url: "https://supabase.com/docs/guides/platform/manage-your-usage/logs",
+    },
+  ],
+]);
+const POLICY_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 const IDENTITY_ENVS = {
   github: ["GITHUB_REPOSITORY_ID"],
   "vercel-api": ["VERCEL_ORG_ID", "VERCEL_API_PROJECT_ID"],
@@ -148,12 +170,10 @@ const DOM_DIMENSIONS = {
     supabase_database_bytes: { labels: ["Database Size"], unit: "bytes" },
     supabase_uncached_egress_bytes: { labels: ["Egress (uncached)", "Uncached Egress"], unit: "bytes" },
     supabase_cached_egress_bytes: { labels: ["Cached Egress"], unit: "bytes" },
-    supabase_storage_bytes: { labels: ["Storage Size"], unit: "bytes" },
+    supabase_storage_bytes: { labels: ["Storage Size", "Storage"], unit: "bytes" },
     supabase_mau: { labels: ["Monthly Active Users", "MAU"], unit: "users" },
     supabase_edge_invocations: { labels: ["Edge Function Invocations"], unit: "invocations" },
     supabase_realtime_messages: { labels: ["Realtime Messages"], unit: "messages" },
-    supabase_iops: { labels: ["Disk IOPS", "IOPS/Throughput"], unit: "iops" },
-    supabase_logs_bytes: { labels: ["Logs/Pipelines ingestion", "Log Ingestion"], unit: "bytes" },
   },
 };
 
@@ -465,6 +485,47 @@ function validateVercelOfficial(document, provider) {
   return usage;
 }
 
+function validateSupabaseExclusions(exclusions, capturedAt, accountStatus) {
+  if (!Array.isArray(exclusions) || exclusions.length !== SUPABASE_EXCLUSIONS.size) {
+    hold("supabase_policy_evidence_incomplete");
+  }
+  const captured = parseUtc(capturedAt, "captured_at_invalid");
+  const accountStatusSha256 = sha256Bytes(Buffer.from(canonicalize(accountStatus)));
+  const names = new Set();
+  for (const exclusion of exclusions) {
+    exactKeys(
+      exclusion,
+      new Set([
+        "name",
+        "status",
+        "reason_code",
+        "policy_url",
+        "policy_sha256",
+        "retrieved_at",
+        "account_status_sha256",
+      ]),
+      "supabase_policy_evidence_invalid",
+    );
+    const contract = SUPABASE_EXCLUSIONS.get(exclusion.name);
+    const retrieved = parseUtc(exclusion.retrieved_at, "supabase_policy_evidence_invalid");
+    if (
+      !contract ||
+      names.has(exclusion.name) ||
+      exclusion.status !== "not_applicable" ||
+      exclusion.reason_code !== contract.reason ||
+      exclusion.policy_url !== contract.url ||
+      !/^[0-9a-f]{64}$/u.test(exclusion.policy_sha256) ||
+      exclusion.account_status_sha256 !== accountStatusSha256 ||
+      !(retrieved <= captured && captured < retrieved + POLICY_MAX_AGE_MS)
+    ) {
+      hold("supabase_policy_evidence_invalid");
+    }
+    names.add(exclusion.name);
+  }
+  if (names.size !== SUPABASE_EXCLUSIONS.size) hold("supabase_policy_evidence_incomplete");
+  return exclusions;
+}
+
 function validateSupabaseOfficial(document) {
   const payloads = document.official_payloads;
   if (!Array.isArray(payloads) || payloads.length !== 1) hold("supabase_official_payload_invalid");
@@ -482,6 +543,7 @@ function validateSupabaseOfficial(document) {
       "billing_window_end",
       "source_url",
       "dimensions",
+      "non_applicable_dimensions",
       "connector_bindings",
     ]),
     "supabase_official_payload_invalid",
@@ -513,7 +575,20 @@ function validateSupabaseOfficial(document) {
     nonemptyString(dimension.unit, "supabase_official_dimension_invalid");
   }
   if (usage.size !== EXPECTED_DIMENSIONS.supabase.size) hold("supabase_official_dimension_missing");
-  return usage;
+  const accountStatus = {
+    plan: value.plan,
+    paid_enabled: value.paid_enabled,
+    overage_enabled: value.overage_enabled,
+    addon_enabled: value.addon_enabled,
+  };
+  return {
+    usage,
+    exclusions: validateSupabaseExclusions(
+      value.non_applicable_dimensions,
+      document.captured_at,
+      accountStatus,
+    ),
+  };
 }
 
 function validateOfficialDocument(document, provider, identityEnvNames) {
@@ -526,13 +601,15 @@ function validateOfficialDocument(document, provider, identityEnvNames) {
   const captured = parseUtc(document.captured_at, "official_window_invalid");
   const end = parseUtc(document.billing_window_end, "official_window_invalid");
   if (!(start < captured && captured < end)) hold("official_window_invalid");
-  const usage =
+  const validated =
     provider === "github"
       ? validateGithubOfficial(document)
       : provider === "supabase"
         ? validateSupabaseOfficial(document)
         : validateVercelOfficial(document, provider);
-  return { document, usage };
+  return provider === "supabase"
+    ? { document, usage: validated.usage, exclusions: validated.exclusions }
+    : { document, usage: validated, exclusions: null };
 }
 
 function windowsToolEnvironment(extra = {}) {
@@ -905,6 +982,35 @@ function billingMonthWindows(capturedAt) {
   return windows;
 }
 
+function anchoredBillingMonthWindows(capturedAt, billingWindowStart, billingWindowEnd) {
+  const capture = new Date(capturedAt);
+  let start = new Date(billingWindowStart);
+  let end = new Date(billingWindowEnd);
+  if (
+    !Number.isFinite(capture.getTime()) ||
+    !Number.isFinite(start.getTime()) ||
+    !Number.isFinite(end.getTime()) ||
+    !(start <= capture && capture < end)
+  ) {
+    hold("dashboard_window_invalid");
+  }
+  const horizon = new Date(capture.getTime() + HORIZON_MS);
+  const windows = [];
+  while (start < horizon) {
+    const windowStart = start.toISOString().replace(".000Z", "Z");
+    const windowEnd = end.toISOString().replace(".000Z", "Z");
+    windows.push({
+      start: windowStart,
+      end: windowEnd,
+      id: `billing-month:${windowStart}:${windowEnd}`,
+      current: start <= capture && capture < end,
+    });
+    start = end;
+    end = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, end.getUTCDate()));
+  }
+  return windows;
+}
+
 function dashboardProjection(
   snapshot,
   provider,
@@ -934,12 +1040,25 @@ function dashboardProjection(
     supabase: ["Free"],
   }[provider];
   if (!planTokens.some((token) => snapshot.includes(token))) hold("dashboard_plan_missing");
-  const disabledTokens = ["Paid usage disabled", "Overages disabled", "Spend limit: $0"];
+  const disabledTokens = [
+    "Paid usage disabled",
+    "Overages disabled",
+    "Spend limit: $0",
+    "You won't be charged any extra for usage",
+  ];
   if (!disabledTokens.some((token) => snapshot.includes(token))) hold("dashboard_billing_guard_missing");
-  if (provider === "supabase" && !snapshot.includes("Add-ons disabled")) {
+  if (
+    provider === "supabase" &&
+    (!snapshot.includes("Spend cap") ||
+      !snapshot.includes("You won't be charged any extra for usage"))
+  ) {
     hold("dashboard_addon_guard_missing");
   }
   const dimensions = [];
+  const quotaWindows =
+    provider === "supabase"
+      ? anchoredBillingMonthWindows(capturedAt, billingWindowStart, billingWindowEnd)
+      : billingMonthWindows(capturedAt);
   for (const [name, contract] of Object.entries(DOM_DIMENSIONS[provider])) {
     const labels = contract.labels.map(escapeRegex).join("|");
     const pattern = new RegExp(
@@ -952,7 +1071,7 @@ function dashboardProjection(
     const observed = normalizeDomMeasure(match[1], observedUnit, contract.unit);
     const quota = normalizeDomMeasure(match[3], match[4], contract.unit);
     if (quota <= 0) hold("quota_invalid");
-    for (const window of billingMonthWindows(capturedAt)) {
+    for (const window of quotaWindows) {
       dimensions.push({
         name,
         observed_usage: window.current ? observed : 0,
@@ -988,7 +1107,67 @@ function currentIdentityBindings(provider) {
   });
 }
 
-function buildSupabaseOfficialDocument(spec) {
+function buildSupabasePolicyExclusions(spec, projection) {
+  if (!Array.isArray(spec.policyEvidence) || spec.policyEvidence.length !== 2) {
+    hold("supabase_policy_evidence_incomplete");
+  }
+  const evidenceByUrl = new Map();
+  const captured = parseUtc(spec.capturedAt, "captured_at_invalid");
+  for (const evidence of spec.policyEvidence) {
+    exactKeys(
+      evidence,
+      new Set(["url", "retrievedAt", "snapshot"]),
+      "supabase_policy_evidence_invalid",
+    );
+    const url = nonemptyString(evidence.url, "supabase_policy_evidence_invalid");
+    const retrieved = parseUtc(evidence.retrievedAt, "supabase_policy_evidence_invalid");
+    const snapshot = nonemptyString(evidence.snapshot, "supabase_policy_evidence_invalid");
+    if (
+      evidenceByUrl.has(url) ||
+      ![...SUPABASE_EXCLUSIONS.values()].some((contract) => contract.url === url) ||
+      !(retrieved <= captured && captured < retrieved + POLICY_MAX_AGE_MS)
+    ) {
+      hold("supabase_policy_evidence_invalid");
+    }
+    const normalized = snapshot.toLowerCase();
+    if (
+      (url.endsWith("/disk-iops") &&
+        (!normalized.includes("provisioned iops") ||
+          !(normalized.includes("opt in") || normalized.includes("only charged")))) ||
+      (url.endsWith("/logs") &&
+        (!normalized.includes("coming soon") ||
+          !(normalized.includes("billing") || normalized.includes("enforcement"))))
+    ) {
+      hold("supabase_policy_state_changed");
+    }
+    evidenceByUrl.set(url, {
+      retrievedAt: evidence.retrievedAt,
+      sha256: sha256Bytes(Buffer.from(snapshot)),
+    });
+  }
+  const accountStatus = {
+    plan: projection.plan,
+    paid_enabled: projection.paid_enabled,
+    overage_enabled: projection.overage_enabled,
+    addon_enabled: projection.addon_enabled,
+  };
+  const accountStatusSha256 = sha256Bytes(Buffer.from(canonicalize(accountStatus)));
+  return [...SUPABASE_EXCLUSIONS.entries()].map(([name, contract]) => {
+    const evidence = evidenceByUrl.get(contract.url);
+    if (!evidence) hold("supabase_policy_evidence_incomplete");
+    return {
+      name,
+      status: "not_applicable",
+      reason_code: contract.reason,
+      policy_url: contract.url,
+      policy_sha256: evidence.sha256,
+      retrieved_at: evidence.retrievedAt,
+      account_status_sha256: accountStatusSha256,
+    };
+  });
+}
+
+export function buildSupabaseOfficialDocument(spec) {
   if (
     spec.connectorVerified !== true ||
     !Array.isArray(spec.connectorBindings) ||
@@ -1008,6 +1187,7 @@ function buildSupabaseOfficialDocument(spec) {
     spec.billingWindowEnd,
   );
   if (!Array.isArray(projection.dimensions)) hold("dashboard_dimensions_invalid");
+  const nonApplicableDimensions = buildSupabasePolicyExclusions(spec, projection);
   const captured = parseUtc(spec.capturedAt, "captured_at_invalid");
   const dimensions = projection.dimensions
     .filter(
@@ -1041,6 +1221,7 @@ function buildSupabaseOfficialDocument(spec) {
           billing_window_end: spec.billingWindowEnd,
           source_url: projection.source_url,
           dimensions,
+          non_applicable_dimensions: nonApplicableDimensions,
           connector_bindings: [...spec.connectorBindings],
         },
       },
@@ -1163,7 +1344,10 @@ export function projectProviderCapture({
     hold("official_window_binding_mismatch");
   }
   const observation = {
-    schema: OBSERVATION_SCHEMA,
+    schema:
+      provider === "supabase"
+        ? "free-tier.provider-observation.v2"
+        : OBSERVATION_SCHEMA,
     provider,
     public_project: publicProject,
     captured_at: capturedAt,
@@ -1172,11 +1356,17 @@ export function projectProviderCapture({
     overage_enabled: false,
     quota_status: "known",
     dimensions,
+    ...(provider === "supabase"
+      ? { non_applicable_dimensions: official.exclusions }
+      : {}),
     source_url_class: "official-provider-api-or-dashboard",
     source_url: projection.source_url,
   };
   const response = {
-    schema: RESPONSE_SCHEMA,
+    schema:
+      provider === "supabase"
+        ? "free-tier.provider-private-response.v2"
+        : RESPONSE_SCHEMA,
     provider,
     observation_sha256: sha256Bytes(Buffer.from(canonicalize(observation))),
     official_payloads: officialPayloads.official_payloads,

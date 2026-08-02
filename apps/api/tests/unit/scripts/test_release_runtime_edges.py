@@ -10,7 +10,6 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import anyio
 import pytest
 from app.services.release.receipts import canonicalize
 from scripts import release_runtime_prestate
@@ -261,9 +260,8 @@ def test_prestate_database_connection_is_disposed_on_its_own_loop() -> None:
         async def dispose(self) -> None:
             loop_ids.append(id(asyncio.get_running_loop()))
 
-    observed = anyio.run(
-        release_runtime_prestate._database_time,  # pyright: ignore[reportPrivateUsage]
-        Engine(),
+    observed = release_runtime_prestate._database_time_from_isolated_thread(  # pyright: ignore[reportPrivateUsage]
+        Engine()
     )
     assert observed == datetime(2026, 8, 2, tzinfo=UTC)
     assert len(loop_ids) == 2

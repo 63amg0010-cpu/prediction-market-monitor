@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -59,12 +60,17 @@ def test_compat_state_preserves_callers_current_event_loop(
         activation_nonce=str(ACTIVATION),
         api_alias_receipt="stop",
     )
-    try:
-        previous_loop = asyncio.get_event_loop()
-    except RuntimeError:
-        previous_loop = None
+    policy = cast(
+        "asyncio.AbstractEventLoopPolicy",
+        vars(asyncio.events)["_event_loop_policy"],
+    )
+    policy_local = getattr(policy, "_local", None)
+    previous_loop = cast(
+        "asyncio.AbstractEventLoop | None",
+        getattr(policy_local, "_loop", None),
+    )
     caller_loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(caller_loop)
+    policy.set_event_loop(caller_loop)
     try:
         with pytest.raises(ReachedDocumentReadError):
             _ = handlers.compat_state(args, now=lambda: NOW)
@@ -72,5 +78,5 @@ def test_compat_state_preserves_callers_current_event_loop(
         assert asyncio.get_event_loop() is caller_loop
         assert not caller_loop.is_closed()
     finally:
-        asyncio.set_event_loop(previous_loop)
+        policy.set_event_loop(previous_loop)
         caller_loop.close()

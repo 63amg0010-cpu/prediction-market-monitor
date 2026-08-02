@@ -240,7 +240,7 @@ def test_verify_accepts_exact_fresh_four_provider_capture_set(
     )
     dimensions = result["dimensions"]
     assert isinstance(dimensions, list)
-    assert len(dimensions) == 19
+    assert len(dimensions) == 17
 
 
 def test_verify_rejects_missing_provider_capture(

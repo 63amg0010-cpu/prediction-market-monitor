@@ -6,7 +6,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, cast
 
 import anyio
-from anyio.to_thread import run_sync as run_sync_in_worker_thread
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -53,16 +52,9 @@ def _git_in_process_loop(root: Path, arguments: tuple[str, ...]) -> bytes:
     return result
 
 
-async def _git_in_worker(root: Path, arguments: tuple[str, ...]) -> bytes:
-    return await run_sync_in_worker_thread(_git_in_process_loop, root, arguments)
-
-
 def _git(root: Path, *arguments: str) -> str:
-    runner = asyncio.Runner(loop_factory=asyncio.SelectorEventLoop)
-    with runner:
-        local_loop = runner.get_loop()
-        raw = runner.run(_git_in_worker(root, arguments))
-    assert local_loop.is_closed()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        raw = executor.submit(_git_in_process_loop, root, arguments).result()
     return raw.decode().strip()
 
 
@@ -195,6 +187,25 @@ def test_secret_scan_rejects_plaintext_capture_and_magic_bytes(
     codes = _finding_codes(_document(output))
     assert exit_code == 2
     assert codes == {"forbidden_magic_bytes", "plaintext_dump_path"}
+
+
+def test_secret_scan_treats_capture_named_source_as_source_code(
+    tmp_path: Path,
+) -> None:
+    root, base_sha = _repository(tmp_path)
+    reviewed_sha = _commit(
+        root,
+        "apps/api/scripts/provider_capture_projection.mjs",
+        'export const status = "redacted"\n',
+    )
+    output = root / "attempt" / "secret-scan.json"
+
+    exit_code = run_secret_static_scan(
+        SecretScanRequest(root, base_sha, reviewed_sha, output)
+    )
+
+    assert exit_code == 0
+    assert _document(output)["accepted"] is True
 
 
 def test_code_quality_rejects_suppressions_and_python_stubs(tmp_path: Path) -> None:
