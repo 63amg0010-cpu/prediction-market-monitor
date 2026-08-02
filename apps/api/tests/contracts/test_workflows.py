@@ -181,9 +181,17 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
             "MIGRATION_DATABASE_URL",
             "PG_DUMP_DATABASE_URL",
             "PG_RESTORE_DATABASE_URL",
+        )
+    )
+    install_step = str(named_steps["Install PostgreSQL client"]["run"])
+    assert all(
+        value in install_step
+        for value in (
+            "https://www.postgresql.org/media/keys/ACCC4CF8.asc",
+            "https://apt.postgresql.org/pub/repos/apt",
             "postgresql-client-17",
             "pg_dump --version",
-            "PostgreSQL\\) 17\\.",
+            r"PostgreSQL\) 17\.",
         )
     )
     assert "pg_dump --format=custom --no-owner --no-acl" in rendered
