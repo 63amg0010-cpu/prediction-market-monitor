@@ -115,9 +115,7 @@ def _write_deployment_root(
                 "approval_launch_sha256s": ["d" * 64, "e" * 64],
                 "dispatch_nonce": None,
                 "attempt": 0,
-                "database_timestamps": {
-                    "created_at_db": "2026-07-29T03:00:00Z"
-                },
+                "database_timestamps": {"created_at_db": "2026-07-29T03:00:00Z"},
                 "accepted": True,
                 "terminal_for_attempt": True,
                 "retry_permitted": False,
@@ -164,6 +162,44 @@ def _private_github_capture_inputs(
     raw_response_path = tmp_path / "raw-response.json"
     screenshot_path = tmp_path / "screenshot.png"
     output_path = tmp_path / "github-redacted.json"
+    captured = datetime.fromisoformat(cast("str", verified["captured_at"]))
+    current: dict[str, int] = {}
+    for raw in cast("list[gate.JsonObject]", verified["dimensions"]):
+        start = datetime.fromisoformat(cast("str", raw["window_start"]))
+        end = datetime.fromisoformat(cast("str", raw["window_end"]))
+        if start <= captured < end:
+            current[cast("str", raw["name"])] = cast("int", raw["observed_usage"])
+    billing_items: list[dict[str, object]] = []
+    for product, sku, unit, dimension in (
+        ("Actions", "actions_linux", "minutes", "github_actions_minutes"),
+        (
+            "Actions",
+            "actions_storage",
+            "gigabyte-hours",
+            "github_artifact_gb_hours",
+        ),
+        (
+            "Packages",
+            "packages_storage",
+            "gigabyte-hours",
+            "github_packages_gb_hours",
+        ),
+    ):
+        usage = current[dimension]
+        billing_items.append(
+            {
+                "product": product,
+                "sku": sku,
+                "unitType": unit,
+                "pricePerUnit": 0,
+                "grossQuantity": usage,
+                "grossAmount": 0,
+                "discountQuantity": 0,
+                "discountAmount": 0,
+                "netQuantity": usage,
+                "netAmount": 0,
+            }
+        )
     _ = observation_path.write_text(json.dumps(observation), encoding="utf-8")
     _ = raw_response_path.write_text(
         json.dumps(
@@ -174,7 +210,37 @@ def _private_github_capture_inputs(
                     gate.canonical_bytes(observation)
                 ),
                 "official_payloads": [
-                    {"private": "raw-secret-sentinel"},
+                    {
+                        "kind": "repository",
+                        "value": {
+                            "id": "private",
+                            "full_name": "63amg0010-cpu/prediction-market-monitor",
+                            "private": False,
+                        },
+                    },
+                    {"kind": "artifacts", "value": []},
+                    {
+                        "kind": "cache-usage",
+                        "value": {
+                            "active_caches_size_in_bytes": current[
+                                "github_cache_bytes"
+                            ],
+                            "active_caches_count": 0,
+                        },
+                    },
+                    {
+                        "kind": "billing-summary",
+                        "request_scope": {
+                            "year": captured.year,
+                            "month": captured.month,
+                            "repository": "63amg0010-cpu/prediction-market-monitor",
+                        },
+                        "time_period": {
+                            "year": captured.year,
+                            "month": captured.month,
+                        },
+                        "value": billing_items,
+                    },
                 ],
             }
         ),
@@ -238,7 +304,7 @@ def test_materialize_provider_capture_writes_only_redacted_schema(
     observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
         tmp_path
     )
-    protected_identity = "private-repository-id-sentinel"
+    protected_identity = "private"
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", protected_identity)
     predecessor = _write_deployment_root(tmp_path)
 
@@ -271,7 +337,7 @@ def test_materialize_provider_capture_writes_only_redacted_schema(
     )
     rendered = output.read_text(encoding="utf-8")
     assert protected_identity not in rendered
-    assert "raw-secret-sentinel" not in rendered
+    assert "actions_linux" not in rendered
     assert "screenshot-secret-sentinel" not in rendered
     assert "private-url-secret-sentinel" not in rendered
     assert "private-account" not in rendered
@@ -326,8 +392,8 @@ def test_materialize_and_import_accept_later_verified_predecessors(
     phase: str,
     command: str,
 ) -> None:
-    observation, raw_response, screenshot, output, _ = (
-        _private_github_capture_inputs(tmp_path)
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     predecessor_path = _write_deployment_root(tmp_path, command=command)
@@ -365,8 +431,8 @@ def test_materialize_rejects_unsigned_later_phase_predecessor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    observation, raw_response, screenshot, output, _ = (
-        _private_github_capture_inputs(tmp_path)
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     predecessor = _write_deployment_root(
@@ -390,8 +456,8 @@ def test_materialize_rejects_minimal_self_hashed_acceptance_predecessor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    observation, raw_response, screenshot, output, _ = (
-        _private_github_capture_inputs(tmp_path)
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     minimal = gate.with_receipt_sha(
@@ -435,8 +501,8 @@ def test_materialize_rejects_unsafe_bootstrap_receipt(
     field: str,
     value: gate.JsonValue,
 ) -> None:
-    observation, raw_response, screenshot, output, _ = (
-        _private_github_capture_inputs(tmp_path)
+    observation, raw_response, screenshot, output, _ = _private_github_capture_inputs(
+        tmp_path
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     predecessor = _write_deployment_root(tmp_path, command="bootstrap-verify")
@@ -529,14 +595,42 @@ def test_materialize_provider_capture_rejects_unrelated_official_response(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    observation, raw_response, screenshot, _, document = (
-        _private_github_capture_inputs(tmp_path)
+    observation, raw_response, screenshot, _, document = _private_github_capture_inputs(
+        tmp_path
     )
     monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
     document["paid_enabled"] = True
     _ = observation.write_text(json.dumps(document), encoding="utf-8")
     observation.chmod(0o600)
     with pytest.raises(gate.GateHoldError, match="does not derive observation"):
+        _ = gate.materialize_provider_capture(
+            provider="github",
+            observation_path=observation,
+            raw_response_path=raw_response,
+            screenshot_path=screenshot,
+            identity_envs=("GITHUB_REPOSITORY_ID",),
+        )
+
+
+def test_materialize_provider_capture_rejects_official_counter_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observation, raw_response, screenshot, _, _ = _private_github_capture_inputs(
+        tmp_path
+    )
+    monkeypatch.setenv("GITHUB_REPOSITORY_ID", "private")
+    response = cast(
+        "gate.JsonObject", json.loads(raw_response.read_text(encoding="utf-8"))
+    )
+    payloads = cast("list[gate.JsonObject]", response["official_payloads"])
+    items = cast("list[gate.JsonObject]", payloads[3]["value"])
+    items[0]["netQuantity"] = cast("int", items[0]["netQuantity"]) + 1
+    _ = raw_response.write_text(json.dumps(response), encoding="utf-8")
+    raw_response.chmod(0o600)
+    with pytest.raises(
+        gate.GateHoldError, match="official counters do not derive observation"
+    ):
         _ = gate.materialize_provider_capture(
             provider="github",
             observation_path=observation,
