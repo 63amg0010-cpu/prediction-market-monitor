@@ -3,12 +3,14 @@ from __future__ import annotations
 # ruff: noqa: ANN401, S105, S106
 # pyright: reportAny=false, reportArgumentType=false, reportExplicitAny=false
 # pyright: reportUnannotatedClassAttribute=false, reportUnusedCallResult=false
+import asyncio
 import subprocess
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+import anyio
 import pytest
 from app.services.release.receipts import canonicalize
 from scripts import release_runtime_prestate
@@ -213,6 +215,59 @@ def test_http_probe_is_get_only_bounded_and_never_redirects() -> None:
     assert urls == ["https://api.example.test/health"]
     with pytest.raises(HttpRuntimeError, match="http_url_invalid"):
         _ = probe.fetch("http://api.example.test/health")
+
+
+def test_prestate_database_connection_is_disposed_on_its_own_loop() -> None:
+    loop_ids: list[int] = []
+
+    class Transaction:
+        async def __aenter__(self) -> None:
+            return None
+
+        async def __aexit__(
+            self,
+            _error_type: object,
+            _error: object,
+            _traceback: object,
+        ) -> None:
+            return None
+
+    class Connection:
+        def begin(self) -> Transaction:
+            return Transaction()
+
+        async def execute(self, _statement: object) -> None:
+            loop_ids.append(id(asyncio.get_running_loop()))
+
+        async def scalar(self, _statement: object) -> datetime:
+            return datetime(2026, 8, 2, tzinfo=UTC)
+
+    class ConnectionContext:
+        async def __aenter__(self) -> Connection:
+            return Connection()
+
+        async def __aexit__(
+            self,
+            _error_type: object,
+            _error: object,
+            _traceback: object,
+        ) -> None:
+            return None
+
+    class Engine:
+        def connect(self) -> ConnectionContext:
+            return ConnectionContext()
+
+        async def dispose(self) -> None:
+            loop_ids.append(id(asyncio.get_running_loop()))
+
+    observed = anyio.run(
+        release_runtime_prestate._database_time,  # pyright: ignore[reportPrivateUsage]
+        Engine(),
+    )
+    assert observed == datetime(2026, 8, 2, tzinfo=UTC)
+    assert len(loop_ids) == 2
+    assert len(set(loop_ids)) == 1
 
 
 def test_composite_prestate_uses_the_validated_origin_main_ref(

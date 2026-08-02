@@ -56,19 +56,22 @@ def _hash(value: str) -> str:
 
 
 async def _database_time(engine: AsyncEngine) -> datetime:
-    async with engine.connect() as connection, connection.begin():
-        _ = await connection.execute(
-            text(
-                "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+    try:
+        async with engine.connect() as connection, connection.begin():
+            _ = await connection.execute(
+                text(
+                    "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"
+                )
             )
-        )
-        value = await connection.scalar(
-            text("SELECT transaction_timestamp()")
-        )
-        if not isinstance(value, datetime):
-            msg = "database_time_invalid"
-            raise PrestateRuntimeError(msg)
-        return value
+            value = await connection.scalar(
+                text("SELECT transaction_timestamp()")
+            )
+            if not isinstance(value, datetime):
+                msg = "database_time_invalid"
+                raise PrestateRuntimeError(msg)
+            return value
+    finally:
+        await engine.dispose()
 
 
 def capture_composite_prestate(
