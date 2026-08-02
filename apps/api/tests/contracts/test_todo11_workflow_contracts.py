@@ -248,7 +248,8 @@ def test_ci_manual_dispatch_is_attempt_indexed_and_production_credential_free() 
     )
     production = _job(workflow, "deploy-production")
     assert production["if"] == (
-        "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}"
+        "${{ github.event_name == 'push' && github.ref == 'refs/heads/main' "
+        "&& vars.PRODUCTION_AUTODEPLOY == 'enabled' }}"
     )
 
 
@@ -316,6 +317,7 @@ def test_ci_executes_shared_guarded_twenty_command_manifest() -> None:
     assert gate_env == {
         "ATTEMPT_DIR": "${{ steps.local-qa-bindings.outputs.attempt_dir }}",
         "BASE_SHA": "${{ steps.local-qa-bindings.outputs.base_sha }}",
+        "PYTHONTRACEMALLOC": "5",
         "REVIEWED_SHA": "${{ steps.local-qa-bindings.outputs.reviewed_sha }}",
     }
 

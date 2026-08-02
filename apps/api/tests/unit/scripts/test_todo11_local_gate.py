@@ -901,6 +901,7 @@ def test_reprovision_holds_lock_across_drop_create_upgrade_and_verify(
     assert events == [
         "connect",
         "SELECT pg_advisory_lock(hashtext(:key))",
+        "DO $$",
         'DROP DATABASE IF EXISTS "monitor_migration_qa" WITH (FORCE)',
         'CREATE DATABASE "monitor_migration_qa"',
         "upgrade:20260726_0009",

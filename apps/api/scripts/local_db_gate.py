@@ -171,6 +171,7 @@ async def _maintenance_phase(
                     return {"database_absent": True, "advisory_lock": True}
                 if request.required_start is None:
                     raise LocalDatabaseHoldError("required_start_missing")
+                await _ensure_supabase_qa_roles(connection)
                 await _drop_database(connection, request.expected_database)
                 _ = await connection.execute(
                     text(f'CREATE DATABASE "{request.expected_database}"')
@@ -190,6 +191,31 @@ async def _maintenance_phase(
 async def _drop_database(connection: AsyncConnection, database: str) -> None:
     _ = await connection.execute(
         text(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
+    )
+
+
+async def _ensure_supabase_qa_roles(connection: AsyncConnection) -> None:
+    """Mirror the two Supabase Data API roles in disposable PostgreSQL QA."""
+    _ = await connection.execute(
+        text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'anon'
+                ) THEN
+                    CREATE ROLE anon NOLOGIN;
+                END IF;
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_catalog.pg_roles
+                    WHERE rolname = 'authenticated'
+                ) THEN
+                    CREATE ROLE authenticated NOLOGIN;
+                END IF;
+            END
+            $$
+            """
+        )
     )
 
 
