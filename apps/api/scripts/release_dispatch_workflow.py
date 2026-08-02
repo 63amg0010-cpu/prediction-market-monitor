@@ -87,7 +87,20 @@ def dispatch_workflow(  # noqa: PLR0913
         expected_plan_sha256=expected_plan_sha256,
         activation_nonce=activation_nonce,
     )
-    values = {**reservation, "attempt": attempt, "dispatch_nonce": dispatch_nonce}
+    dynamic_inputs = reservation.get("operation_inputs")
+    if not isinstance(dynamic_inputs, dict) or not all(
+        isinstance(value, str) for value in dynamic_inputs.values()
+    ):
+        hold("reservation_operation_inputs_invalid")
+    reserved_names = set(reservation) | {"attempt", "dispatch_nonce"}
+    if reserved_names.intersection(dynamic_inputs):
+        hold("reservation_operation_input_conflict")
+    values = {
+        **reservation,
+        **dynamic_inputs,
+        "attempt": attempt,
+        "dispatch_nonce": dispatch_nonce,
+    }
     title = _render(workflow["display_title_template"], values)
     if (
         attempt not in {1, 2}

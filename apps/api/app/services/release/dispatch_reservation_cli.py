@@ -15,6 +15,9 @@ from .dispatch_reservations import (
     write_reservation,
 )
 
+MAX_OPERATION_INPUT_KEY = 64
+MAX_OPERATION_INPUT_VALUE = 512
+
 if TYPE_CHECKING:
     import argparse
 
@@ -32,6 +35,7 @@ class DispatchReserveArgs(Protocol):
     attempt: int
     json_out: str
     git_ref: str
+    operation_input: list[str]
 
 
 class SubparserRegistry(Protocol):
@@ -62,6 +66,7 @@ def add_dispatch_reserve_parser(
         _ = command.add_argument(f"--{name}", required=True)
     _ = command.add_argument("--attempt", required=True, type=int)
     _ = command.add_argument("--ref", dest="git_ref", default="refs/heads/main")
+    _ = command.add_argument("--operation-input", action="append", default=[])
 
 
 async def execute_dispatch_reserve(args: DispatchReserveArgs) -> int:
@@ -95,7 +100,28 @@ def dispatch_reserve_request(args: DispatchReserveArgs) -> DispatchReserveReques
         attempt=args.attempt,
         json_out=Path(args.json_out),
         git_ref=args.git_ref,
+        operation_inputs=_parse_operation_inputs(args.operation_input),
     )
+
+
+def _parse_operation_inputs(values: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in values:
+        key, separator, value = item.partition("=")
+        if (
+            separator != "="
+            or not key
+            or len(key) > MAX_OPERATION_INPUT_KEY
+            or not key.replace("_", "a").isalnum()
+            or key in result
+            or not value
+            or len(value) > MAX_OPERATION_INPUT_VALUE
+            or any(character.isspace() for character in key)
+        ):
+            error_code = "operation_input_invalid"
+            raise ValueError(error_code)
+        result[key] = value
+    return result
 
 
 __all__ = (

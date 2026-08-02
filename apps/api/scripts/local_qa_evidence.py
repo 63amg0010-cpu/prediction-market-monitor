@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from contextlib import contextmanager
@@ -15,6 +16,7 @@ from scripts.activation_evidence_models import (
     PublicActivationAttestation,
     canonical_attestation_bytes,
 )
+from scripts.migration_dispatch_models import NoSpendReceipt, ReviewRoot
 
 if TYPE_CHECKING:
     from collections.abc import Generator, MutableMapping
@@ -35,6 +37,26 @@ PRODUCTION_CREDENTIAL_ENV_NAMES: Final = (
     "GH_TOKEN",
     "GITHUB_TOKEN",
 )
+MIGRATION_INPUT_ENV_NAMES: Final = (
+    "MIGRATION_REVIEW_ROOT_B64",
+    "MIGRATION_NO_SPEND_RECEIPT_B64",
+    "MIGRATION_EXPECTED_COMMIT_SHA",
+    "MIGRATION_EXPECTED_PLAN_SHA256",
+    "MIGRATION_ACTIVATION_NONCE",
+    "MIGRATION_DISPATCH_NONCE",
+    "MIGRATION_ATTEMPT",
+    "MIGRATION_CORRECTION_REVIEW_ROOT_B64",
+    "MIGRATION_CORRECTION_REVIEW_ROOT_SHA256",
+    "MIGRATION_CORRECTION_NO_SPEND_RECEIPT_B64",
+    "MIGRATION_CORRECTION_NO_SPEND_RECEIPT_SHA256",
+    "MIGRATION_CORRECTION_EXPECTED_COMMIT_SHA",
+    "MIGRATION_CORRECTION_EXPECTED_PLAN_SHA256",
+    "MIGRATION_CORRECTION_ACTIVATION_NONCE",
+    "MIGRATION_CORRECTION_DISPATCH_NONCE",
+    "MIGRATION_CORRECTION_ATTEMPT",
+    "GITHUB_RUN_ID",
+    "RUNNER_TEMP",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,13 +67,17 @@ class LocalQaEvidence:
     receipt_path: Path
     attestation_sha256: str
     database_time: datetime
+    backup_path: Path
+    bootstrap_environment: dict[str, str]
 
 
 def materialize(attempt_dir: Path, reviewed_sha: str) -> LocalQaEvidence:
     """Write canonical model-produced evidence into one fresh attempt directory."""
     evidence_root = attempt_dir / EVIDENCE_DIRECTORY
     database_time = datetime.now(UTC).replace(microsecond=0)
-    activation_nonce = uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:activation")
+    activation_nonce = uuid5(
+        NAMESPACE_URL, f"local-qa:{reviewed_sha}:correction-activation"
+    )
     attestation = PublicActivationAttestation.model_validate(
         {
             "schema_version": 1,
@@ -99,12 +125,22 @@ def materialize(attempt_dir: Path, reviewed_sha: str) -> LocalQaEvidence:
     attestation_path = evidence_root / ATTESTATION_NAME
     receipt_path = evidence_root / RECEIPT_NAME
     evidence_root.mkdir(exist_ok=False)
+    backup_path = evidence_root / "pre-migration.dump.age"
+    bootstrap_environment = _bootstrap_environment(
+        reviewed_sha,
+        activation_nonce=str(activation_nonce),
+        runner_temp=str(evidence_root),
+    )
     try:
         _ = attestation_path.write_bytes(attestation_bytes)
         _ = receipt_path.write_bytes(receipt_bytes)
+        _ = backup_path.write_bytes(
+            f"tests-only-local-qa-backup:{reviewed_sha}".encode()
+        )
     except OSError:
         attestation_path.unlink(missing_ok=True)
         receipt_path.unlink(missing_ok=True)
+        backup_path.unlink(missing_ok=True)
         evidence_root.rmdir()
         raise
     return LocalQaEvidence(
@@ -112,21 +148,27 @@ def materialize(attempt_dir: Path, reviewed_sha: str) -> LocalQaEvidence:
         receipt_path=receipt_path,
         attestation_sha256=attestation_sha,
         database_time=database_time,
+        backup_path=backup_path,
+        bootstrap_environment=bootstrap_environment,
     )
 
 
 def cleanup(evidence: LocalQaEvidence | None) -> None:
-    """Remove only the two generated public evidence files and their empty dir."""
+    """Remove only generated local-QA evidence and its empty directory."""
     if evidence is None:
         return
-    for path in (evidence.attestation_path, evidence.receipt_path):
+    for path in (
+        evidence.attestation_path,
+        evidence.receipt_path,
+        evidence.backup_path,
+    ):
         path.unlink(missing_ok=True)
     evidence.attestation_path.parent.rmdir()
 
 
 def sanitize_child_environment(environment: MutableMapping[str, str]) -> None:
     """Remove every Production credential and caller-owned evidence path."""
-    for name in PRODUCTION_CREDENTIAL_ENV_NAMES:
+    for name in (*PRODUCTION_CREDENTIAL_ENV_NAMES, *MIGRATION_INPUT_ENV_NAMES):
         _ = environment.pop(name, None)
     _ = environment.pop("MIGRATION_ACTIVATION_ATTESTATION_PATH", None)
     _ = environment.pop("MIGRATION_ACTIVATION_EVIDENCE_RECEIPT_PATH", None)
@@ -152,15 +194,126 @@ def command_nine_environment(
         environment["MIGRATION_ACTIVATION_EVIDENCE_RECEIPT_PATH"] = str(
             evidence.receipt_path
         )
+        environment.update(evidence.bootstrap_environment)
         yield
     finally:
         _ = environment.pop("MIGRATION_ACTIVATION_ATTESTATION_PATH", None)
         _ = environment.pop("MIGRATION_ACTIVATION_EVIDENCE_RECEIPT_PATH", None)
+        for name in evidence.bootstrap_environment:
+            _ = environment.pop(name, None)
         cleanup(evidence)
 
 
 def _digest(reviewed_sha: str, purpose: str) -> str:
     return hashlib.sha256(f"tests-only:{reviewed_sha}:{purpose}".encode()).hexdigest()
+
+
+def _bootstrap_environment(
+    reviewed_sha: str,
+    *,
+    activation_nonce: str,
+    runner_temp: str,
+) -> dict[str, str]:
+    plan_sha = _digest(reviewed_sha, "approved-plan")
+    protected = {
+        "github_repository": _digest(reviewed_sha, "github-repository"),
+        "supabase_project": _digest(reviewed_sha, "supabase-project"),
+        "vercel_api_project": _digest(reviewed_sha, "vercel-api-project"),
+        "vercel_web_project": _digest(reviewed_sha, "vercel-web-project"),
+    }
+    initial_nonce = str(
+        uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:initial-activation")
+    )
+    initial_root, initial_no_spend = _release_pair(
+        reviewed_sha,
+        plan_sha,
+        initial_nonce,
+        protected,
+        "initial",
+    )
+    correction_root, correction_no_spend = _release_pair(
+        reviewed_sha,
+        plan_sha,
+        activation_nonce,
+        protected,
+        "correction",
+    )
+    return {
+        "MIGRATION_REVIEW_ROOT_B64": base64.b64encode(initial_root).decode(),
+        "MIGRATION_NO_SPEND_RECEIPT_B64": base64.b64encode(initial_no_spend).decode(),
+        "MIGRATION_EXPECTED_COMMIT_SHA": reviewed_sha,
+        "MIGRATION_EXPECTED_PLAN_SHA256": plan_sha,
+        "MIGRATION_ACTIVATION_NONCE": initial_nonce,
+        "MIGRATION_DISPATCH_NONCE": str(
+            uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:initial-dispatch")
+        ),
+        "MIGRATION_ATTEMPT": "1",
+        "MIGRATION_CORRECTION_REVIEW_ROOT_B64": base64.b64encode(
+            correction_root
+        ).decode(),
+        "MIGRATION_CORRECTION_REVIEW_ROOT_SHA256": hashlib.sha256(
+            correction_root
+        ).hexdigest(),
+        "MIGRATION_CORRECTION_NO_SPEND_RECEIPT_B64": base64.b64encode(
+            correction_no_spend
+        ).decode(),
+        "MIGRATION_CORRECTION_NO_SPEND_RECEIPT_SHA256": hashlib.sha256(
+            correction_no_spend
+        ).hexdigest(),
+        "MIGRATION_CORRECTION_EXPECTED_COMMIT_SHA": reviewed_sha,
+        "MIGRATION_CORRECTION_EXPECTED_PLAN_SHA256": plan_sha,
+        "MIGRATION_CORRECTION_ACTIVATION_NONCE": activation_nonce,
+        "MIGRATION_CORRECTION_DISPATCH_NONCE": str(
+            uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:correction-dispatch")
+        ),
+        "MIGRATION_CORRECTION_ATTEMPT": "1",
+        "GITHUB_RUN_ID": "1",
+        "RUNNER_TEMP": runner_temp,
+    }
+
+
+def _release_pair(
+    reviewed_sha: str,
+    plan_sha: str,
+    activation_nonce: str,
+    protected: dict[str, str],
+    purpose: str,
+) -> tuple[bytes, bytes]:
+    root = ReviewRoot.model_validate(
+        {
+            "schema_version": 1,
+            "command": "deployment-prestate",
+            "reviewed_sha": reviewed_sha,
+            "approved_plan_sha256": plan_sha,
+            "approval_round_id": _digest(reviewed_sha, f"{purpose}-round"),
+            "approval_launch_sha256s": (
+                _digest(reviewed_sha, f"{purpose}-launch-one"),
+                _digest(reviewed_sha, f"{purpose}-launch-two"),
+            ),
+            "activation_nonce": activation_nonce,
+            "public_provider_names": ("github", "supabase", "vercel"),
+            "protected_identity_hashes": protected,
+        }
+    )
+    root_bytes = json.dumps(
+        root.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
+    ).encode()
+    no_spend = NoSpendReceipt.model_validate(
+        {
+            "schema_version": 1,
+            "command": "no-spend-preflight",
+            "reviewed_sha": reviewed_sha,
+            "approved_plan_sha256": plan_sha,
+            "activation_nonce": activation_nonce,
+            "predecessor_receipt_sha256": hashlib.sha256(root_bytes).hexdigest(),
+            "billing_disabled": True,
+            "projection_below_70_percent": True,
+        }
+    )
+    no_spend_bytes = json.dumps(
+        no_spend.model_dump(mode="json"), separators=(",", ":"), sort_keys=True
+    ).encode()
+    return root_bytes, no_spend_bytes
 
 
 __all__ = (

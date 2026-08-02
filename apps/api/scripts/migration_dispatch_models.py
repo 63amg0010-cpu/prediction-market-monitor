@@ -93,6 +93,8 @@ class DispatchRequest(ClosedModel):
     attempt1_failed_receipt_sha256: str
     attempt1_failed_receipt_b64: str
     attestation_run_id: str
+    attestation_generation: int = 0
+    attestation_dispatch_nonce: str = ""
     attestation_sha256: str
     reservation_sha256: str
 
@@ -114,7 +116,7 @@ class ValidatedDispatch:
     """Inert exact mutation command derived from a fully validated request."""
 
     operation: Literal["upgrade", "downgrade"]
-    revision: Literal["20260727_0010", "20260727_0011"]
+    revision: Literal["20260727_0010", "20260803_0010a", "20260727_0011"]
     attempt: Literal[1, 2]
     display_title: str
     alembic_argv: tuple[str, str, str, str, str]

@@ -128,14 +128,24 @@ def _assert_claim_contract(
 
 
 def _assert_attempt_artifact(
-    job: dict[str, JsonValue], *, expected_name: str
+    job: dict[str, JsonValue], *, expected_name: str, expected_claim_name: str
 ) -> None:
-    step = _named_steps(job)["Upload redacted workflow receipt"]
-    assert step["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
-    options = _mapping(step["with"])
-    assert options["name"] == expected_name
-    assert options["retention-days"] == 1
-    assert options["if-no-files-found"] == "error"
+    named = _named_steps(job)
+    claim = named["Upload redacted workflow receipt"]
+    assert claim["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    claim_options = _mapping(claim["with"])
+    assert claim_options["name"] == expected_claim_name
+    assert claim_options["retention-days"] == 1
+    assert claim_options["if-no-files-found"] == "error"
+    terminal = next(
+        step for name, step in named.items() if name.startswith("Upload terminal ")
+    )
+    assert terminal["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    terminal_options = _mapping(terminal["with"])
+    assert terminal_options["name"] == expected_name
+    assert terminal_options["retention-days"] == 1
+    assert terminal_options["if-no-files-found"] == "error"
+    assert "operation.json" in str(terminal_options["path"])
 
 
 def _assert_no_production_database_credential(
@@ -235,6 +245,9 @@ def test_ci_manual_dispatch_is_attempt_indexed_and_production_credential_free() 
     _assert_attempt_artifact(
         job,
         expected_name="ci-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}",
+        expected_claim_name=(
+            "ci-claim-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}"
+        ),
     )
     _assert_no_production_database_credential(workflow)
 
@@ -366,6 +379,10 @@ def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
             "collect-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
             "-attempt-${{ inputs.attempt }}"
         ),
+        expected_claim_name=(
+            "collect-claim-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
+            "-attempt-${{ inputs.attempt }}"
+        ),
     )
     _assert_cadence_recording(
         job,
@@ -404,6 +421,10 @@ def test_verify_preserves_schedule_public_gate_and_read_only_claim() -> None:
         job,
         expected_name=(
             "verify-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
+            "-attempt-${{ inputs.attempt }}"
+        ),
+        expected_claim_name=(
+            "verify-claim-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
             "-attempt-${{ inputs.attempt }}"
         ),
     )

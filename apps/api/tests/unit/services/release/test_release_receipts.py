@@ -104,6 +104,10 @@ def test_dispatch_reserve_parser_exposes_complete_generic_identity() -> None:
             "3",
             "--json-out",
             "reservation.json",
+            "--operation-input",
+            "attestation_generation=1",
+            "--operation-input",
+            "attestation_sha256=" + ("c" * 64),
         ]
     )
 
@@ -114,6 +118,10 @@ def test_dispatch_reserve_parser_exposes_complete_generic_identity() -> None:
     request = dispatch_reserve_request(args)
     assert request.predecessor_receipt == Path("previous.json")
     assert request.json_out == Path("reservation.json")
+    assert request.operation_inputs == {
+        "attestation_generation": "1",
+        "attestation_sha256": "c" * 64,
+    }
 
 
 def test_dispatch_reserve_request_resolves_runtime_path_fields() -> None:

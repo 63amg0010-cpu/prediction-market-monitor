@@ -29,10 +29,17 @@ LAUNCH_ONE = "1" * 64
 LAUNCH_TWO = "2" * 64
 ACTIVATION_NONCE = UUID("11111111-1111-4111-8111-111111111111")
 DISPATCH_NONCE = UUID("22222222-2222-4222-8222-222222222222")
+TEST_DATABASE_CREDENTIAL = "local-contract-fixture"
 
 
 def _encoded(value: JsonValue) -> str:
     return base64.b64encode(canonical_body(value)).decode("ascii")
+
+
+def _database_url(driver: str, host: str, port: int) -> str:
+    return (
+        f"{driver}://user:{TEST_DATABASE_CREDENTIAL}@{host}:{port}/postgres"
+    )
 
 
 def _review_root() -> dict[str, JsonValue]:
@@ -91,6 +98,8 @@ def _bootstrap_request(**overrides: str | int) -> DispatchRequest:
         "attempt1_failed_receipt_sha256": "",
         "attempt1_failed_receipt_b64": "",
         "attestation_run_id": "",
+        "attestation_generation": 0,
+        "attestation_dispatch_nonce": "",
         "attestation_sha256": "",
         "reservation_sha256": "",
     }
@@ -120,6 +129,12 @@ def _post_ledger_request(
         "attempt1_failed_receipt_sha256": "",
         "attempt1_failed_receipt_b64": "",
         "attestation_run_id": "123" if revision == "20260727_0011" else "",
+        "attestation_generation": 1 if revision == "20260727_0011" else 0,
+        "attestation_dispatch_nonce": (
+            "33333333-3333-4333-8333-333333333333"
+            if revision == "20260727_0011"
+            else ""
+        ),
         "attestation_sha256": ARTIFACT_SHA if revision == "20260727_0011" else "",
         "reservation_sha256": "9" * 64,
     }
@@ -222,7 +237,9 @@ def test_attempt_two_requires_matching_failed_safe_receipt() -> None:
 def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None:
     # Given: the reviewed 0011 upgrade and 0011-to-0010 downgrade tuples.
     upgrade = _post_ledger_request("upgrade", "20260727_0011", "migrate-production")
-    downgrade = _post_ledger_request("downgrade", "20260727_0010", "rollback-manifold")
+    downgrade = _post_ledger_request(
+        "downgrade", "20260803_0010a", "rollback-manifold"
+    )
 
     # When: both post-ledger requests are validated.
     upgrade_result = validate_dispatch(
@@ -234,7 +251,10 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
 
     # Then: each yields only its exact quoted revision and operation.
     assert upgrade_result.alembic_argv[-2:] == ("upgrade", "20260727_0011")
-    assert downgrade_result.alembic_argv[-2:] == ("downgrade", "20260727_0010")
+    assert downgrade_result.alembic_argv[-2:] == (
+        "downgrade",
+        "20260803_0010a",
+    )
 
 
 @pytest.mark.parametrize(
@@ -254,7 +274,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
         ),
         _post_ledger_request(
             "downgrade",
-            "20260727_0010",
+            "20260803_0010a",
             "rollback-manifold",
             review_root_sha256="c" * 64,
         ),
@@ -321,19 +341,19 @@ def test_database_urls_require_one_matching_direct_or_session_5432_target() -> N
     ("migration", "dump", "restore"),
     [
         (
-            "postgresql+asyncpg://user:secret@pooler.supabase.com:6543/postgres",
-            "postgresql://user:secret@pooler.supabase.com:6543/postgres",
-            "postgresql://user:secret@pooler.supabase.com:6543/postgres",
+            _database_url("postgresql+asyncpg", "pooler.supabase.com", 6543),
+            _database_url("postgresql", "pooler.supabase.com", 6543),
+            _database_url("postgresql", "pooler.supabase.com", 6543),
         ),
         (
-            "postgresql+asyncpg://user:secret@pooler.supabase.com:5432/postgres",
-            "postgresql://user:secret@other.supabase.com:5432/postgres",
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+            _database_url("postgresql+asyncpg", "pooler.supabase.com", 5432),
+            _database_url("postgresql", "other.supabase.com", 5432),
+            _database_url("postgresql", "pooler.supabase.com", 5432),
         ),
         (
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
-            "postgresql://user:secret@pooler.supabase.com:5432/postgres",
+            _database_url("postgresql", "pooler.supabase.com", 5432),
+            _database_url("postgresql", "pooler.supabase.com", 5432),
+            _database_url("postgresql", "pooler.supabase.com", 5432),
         ),
     ],
 )

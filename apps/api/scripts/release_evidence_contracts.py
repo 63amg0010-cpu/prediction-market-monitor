@@ -1,22 +1,21 @@
 """Closed contracts for Todo 11 bootstrap and activation evidence."""
 
-# ruff: noqa: D102, EM101, PLR2004, TC003
+# ruff: noqa: D102, EM101, PLR2004
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Annotated, ClassVar, Literal, Protocol
-from uuid import UUID
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    HttpUrl,
     StringConstraints,
     model_validator,
 )
+
+from scripts.activation_evidence_models import PublicActivationAttestation
 
 Sha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
 Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
@@ -130,29 +129,6 @@ class RedactedRatio(ClosedModel):
     def require_truthful_ratio(self) -> RedactedRatio:
         if abs(self.ratio - (self.numerator / self.denominator)) > 1e-12:
             raise ValueError("redacted_ratio_mismatch")
-        return self
-
-
-class PublicActivationAttestation(ClosedModel):
-    """Only public, neutral, content-addressed activation evidence."""
-
-    schema_version: Literal[1] = 1
-    command: Literal["activation-attestation"] = "activation-attestation"
-    reviewed_sha: Sha
-    activation_nonce: UUID
-    attestation_generation: int = Field(ge=1)
-    database_time: datetime
-    authorization_evidence_sha256: Sha256
-    free_tier_evidence_sha256: Sha256
-    provenance_sha256: Sha256
-    predecessor_receipt_sha256: Sha256
-    redacted_ratios: tuple[RedactedRatio, ...] = Field(min_length=1)
-    public_evidence_urls: tuple[HttpUrl, ...] = Field(min_length=1, max_length=20)
-
-    @model_validator(mode="after")
-    def require_database_timezone(self) -> PublicActivationAttestation:
-        if self.database_time.tzinfo is None:
-            raise ValueError("database_time_timezone_required")
         return self
 
 

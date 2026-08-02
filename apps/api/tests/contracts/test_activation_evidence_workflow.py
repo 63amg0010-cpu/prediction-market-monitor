@@ -182,7 +182,7 @@ def test_migration_downloads_only_the_exact_run_owned_activation_artifact() -> N
     # When/Then: selection binds every identity and rejects the obsolete name.
     exact = (
         "activation-evidence-${ACTIVATION_NONCE}-generation-"
-        "${ATTESTATION_GENERATION}-${DISPATCH_NONCE}-attempt-${ATTEMPT}"
+        "${ATTESTATION_GENERATION}-${ATTESTATION_DISPATCH_NONCE}-attempt-${ATTEMPT}"
     )
     assert exact in source
     assert "activation-attestation-generation-${ATTESTATION_GENERATION}.json" in source

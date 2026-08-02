@@ -8,7 +8,8 @@ import hmac
 import json
 import re
 from hashlib import sha256
-from typing import Final, Literal, Never
+from typing import Final, Literal, Never, cast
+from uuid import UUID
 
 from app.domain.types import JsonValue
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -182,11 +183,27 @@ def _validate_post_ledger(
         if (
             not request.attestation_run_id.isdecimal()
             or int(request.attestation_run_id) < 1
+            or request.attestation_generation < 1
         ):
             reject("attestation_run_required")
+        try:
+            attestation_dispatch_nonce = UUID(request.attestation_dispatch_nonce)
+        except ValueError as error:
+            error_code = "attestation_dispatch_nonce_invalid"
+            raise DispatchValidationError(error_code) from error
+        if attestation_dispatch_nonce in {
+            request.activation_nonce,
+            request.dispatch_nonce,
+        }:
+            reject("attestation_dispatch_nonce_reuse")
         require_sha(request.attestation_sha256, sha256_value=True)
         return
-    if request.attestation_run_id or request.attestation_sha256:
+    if (
+        request.attestation_run_id
+        or request.attestation_generation
+        or request.attestation_dispatch_nonce
+        or request.attestation_sha256
+    ):
         reject("attestation_forbidden")
 
 
@@ -202,22 +219,32 @@ def validate_dispatch(
     tuple_key = (request.operation, request.revision, request.confirm)
     allowed = {
         ("upgrade", "20260727_0010", "migrate-production"),
+        ("upgrade", "20260803_0010a", "repair-release-foundation"),
         ("upgrade", "20260727_0011", "migrate-production"),
-        ("downgrade", "20260727_0010", "rollback-manifold"),
+        ("downgrade", "20260803_0010a", "rollback-manifold"),
     }
     if tuple_key not in allowed:
         reject("operation_tuple_rejected")
     operation: Literal["upgrade", "downgrade"] = (
         "upgrade" if request.operation == "upgrade" else "downgrade"
     )
-    revision: Literal["20260727_0010", "20260727_0011"] = (
-        "20260727_0010"
-        if request.revision == "20260727_0010"
-        else "20260727_0011"
+    revision: Literal["20260727_0010", "20260803_0010a", "20260727_0011"] = cast(
+        "Literal['20260727_0010', '20260803_0010a', '20260727_0011']",
+        request.revision,
     )
-    if tuple_key == ("upgrade", "20260727_0010", "migrate-production"):
-        if request.attestation_run_id or request.attestation_sha256:
+    if tuple_key in {
+        ("upgrade", "20260727_0010", "migrate-production"),
+        ("upgrade", "20260803_0010a", "repair-release-foundation"),
+    }:
+        if (
+            request.attestation_run_id
+            or request.attestation_generation
+            or request.attestation_dispatch_nonce
+            or request.attestation_sha256
+        ):
             reject("bootstrap_attestation_forbidden")
+        if request.revision == "20260803_0010a" and attempt != 1:
+            reject("release_correction_attempt_invalid")
         _validate_bootstrap(request, attempt)
     else:
         _validate_post_ledger(

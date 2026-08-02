@@ -57,6 +57,7 @@ class DispatchReservationReceipt(
     display_title: str
     head_sha: Sha
     ref: Literal["refs/heads/main"]
+    operation_inputs: dict[str, str]
 
 
 __all__ = (

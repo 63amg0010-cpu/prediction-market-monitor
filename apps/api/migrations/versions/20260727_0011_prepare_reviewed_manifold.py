@@ -10,23 +10,15 @@ from scripts.activation_migration_state import (
 from scripts.activation_schema import FOREIGN_KEYS_SQL, SCHEMA_SQL
 from scripts.release_cadence_schema import TABLES as CADENCE_TABLES
 from scripts.release_cadence_schema import execute_schema
-from scripts.release_foundation_schema import (
-    DOWNGRADE_GUARD_SQL,
-    DOWNGRADE_SQL,
-    UPGRADE_SQL,
-)
 
 revision: str = "20260727_0011"
-down_revision: str | None = "20260727_0010"
+down_revision: str | None = "20260803_0010a"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     """Create or verify canonical activation objects before preparing evidence."""
-    for statement in UPGRADE_SQL.split(";\n"):
-        if statement.strip():
-            op.execute(statement)
     release_table = "public.release_receipt_chain"
     release_roles = "PUBLIC, anon, authenticated"
     op.execute(f"REVOKE ALL PRIVILEGES ON TABLE {release_table} FROM {release_roles}")
@@ -61,7 +53,6 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Leave retained evidence inert and unlink every current activation pointer."""
-    op.execute(DOWNGRADE_GUARD_SQL)
     op.execute(
         """
         UPDATE cadence_epoch_contracts
@@ -77,9 +68,6 @@ def downgrade() -> None:
           AND closed_at IS NULL
         """
     )
-    for statement in DOWNGRADE_SQL.split(";\n"):
-        if statement.strip():
-            op.execute(statement)
     if not context.is_offline_mode():
         append_deactivated_transition()
     op.execute(

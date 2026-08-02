@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.api.routes.verification import VerificationHandler
     from app.api.routes.worker import WorkerHandler
     from app.api.routes.workflow_dispatch_claim import WorkflowDispatchClaimer
+    from app.api.routes.workflow_operation_complete import WorkflowOperationCompleter
     from app.collection.repository import CollectionRepository
     from app.core.settings import IdentitySettings
     from app.db.session import DatabaseSessions
@@ -45,6 +46,7 @@ class AppDependencies:
     health_probe: DatabaseHealthProbe | None = None
     activation_evidence_verifier: ActivationEvidenceVerifier | None = None
     workflow_dispatch_claimer: WorkflowDispatchClaimer | None = None
+    workflow_operation_completer: WorkflowOperationCompleter | None = None
     cadence_workflow_recorder: CadenceWorkflowRecorder | None = None
 
 

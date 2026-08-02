@@ -66,6 +66,7 @@ class ActivateCliArgs(argparse.Namespace):
         self.predecessor_receipt: str = ""
         self.attempt: int = 0
         self.git_ref: str = "refs/heads/main"
+        self.operation_input: list[str] = []
 
 
 def parser() -> argparse.ArgumentParser:

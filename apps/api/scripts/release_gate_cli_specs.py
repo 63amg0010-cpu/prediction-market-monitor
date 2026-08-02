@@ -123,9 +123,10 @@ SPECS: Final[dict[str, tuple[Option, ...]]] = {
     ) + (Option("attempt", "integer"),),
     "attest": DB_BINDINGS + _values(
         "authorization-live-proof", "free-tier-result", "measurement-receipt",
-        "attestation-out", "json-out",
+        "source-scope-version", "attestation-out", "json-out",
     ) + _appends("provider-capture", "public-evidence-url") + (
         Option("attestation-generation", "integer"),
+        Option("predecessor-attestation-sha256", required=False),
     ),
     "attestation-secret-upload": DB_BINDINGS + _values("attestation", "json-out"),
     "canonical-hash": _values("input", "json-out"),
@@ -151,7 +152,7 @@ SPECS: Final[dict[str, tuple[Option, ...]]] = {
         "predecessor-receipt", "json-out",
     ) + (Option("attempt", "integer"),) + (
         Option("ref", required=False, dest="git_ref"),
-    ),
+    ) + _appends("operation-input"),
     "dispatch-workflow": DB_BINDINGS + _values(
         "repository", "reservation", "workflow-spec", "base", "dispatch-nonce",
         "json-out",

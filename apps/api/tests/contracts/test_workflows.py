@@ -165,8 +165,9 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
         "attempt1_failed_receipt_sha256",
         "attempt1_failed_receipt_b64",
         "attestation_run_id",
-        "attestation_generation",
-        "attestation_sha256",
+            "attestation_generation",
+            "attestation_dispatch_nonce",
+            "attestation_sha256",
         "reservation_sha256",
     }
     named_steps = _named_steps(job)
