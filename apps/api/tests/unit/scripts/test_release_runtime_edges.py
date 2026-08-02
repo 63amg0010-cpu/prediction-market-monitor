@@ -127,6 +127,52 @@ def test_vercel_resolves_all_named_env_before_child(tmp_path: Path) -> None:
     assert calls.values[0]["shell"] is False
 
 
+@pytest.mark.parametrize(
+    ("platform", "expected"),
+    [
+        ("nt", ("npx.cmd", "--yes", "vercel@51.7.0", "inspect")),
+        ("posix", ("npx", "--yes", "vercel@51.7.0", "inspect")),
+    ],
+)
+def test_vercel_resolves_only_the_windows_npx_shim(
+    tmp_path: Path,
+    platform: str,
+    expected: tuple[str, ...],
+) -> None:
+    calls = Calls()
+    runner = VercelRuntimeRunner(
+        environ={"TOKEN_SOURCE": "token-secret"},
+        run_process=calls.run,
+        platform=platform,
+    )
+    _ = runner.execute(
+        ChildCommand(
+            "inspect",
+            ("npx", "--yes", "vercel@51.7.0", "inspect"),
+            tmp_path,
+            {"VERCEL_TOKEN_FROM_ENV": "TOKEN_SOURCE"},
+        )
+    )
+    assert calls.values[0]["argv"] == expected
+
+
+def test_runtime_rejects_an_unknown_execution_platform(tmp_path: Path) -> None:
+    runner = VercelRuntimeRunner(
+        environ={"TOKEN_SOURCE": "token-secret"},
+        platform="unknown",
+    )
+    command = ChildCommand(
+        "inspect",
+        ("npx", "vercel", "inspect"),
+        tmp_path,
+        {"VERCEL_TOKEN_FROM_ENV": "TOKEN_SOURCE"},
+    )
+    with pytest.raises(
+        RuntimeAdapterError, match="unsupported_execution_platform"
+    ):
+        _ = runner.execute(command)
+
+
 def test_bounded_path_io_and_canonical_loader(tmp_path: Path) -> None:
     path = tmp_path / "receipt.json"
     value = {"a": 1, "b": True}

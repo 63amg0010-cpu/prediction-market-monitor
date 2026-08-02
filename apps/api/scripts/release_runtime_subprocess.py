@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 MAX_OUTPUT_BYTES: Final = 262_144
 DEFAULT_TIMEOUT_SECONDS: Final = 30.0
 RunProcess = Callable[..., subprocess.CompletedProcess[bytes]]
+ExecutionPlatform = str
 
 
 class RuntimeAdapterError(RuntimeError):
@@ -61,6 +62,20 @@ def _validate_argv(argv: tuple[str, ...], secrets: tuple[str, ...]) -> None:
     if any(secret and secret in part for part in argv for secret in secrets):
         msg = "secret_in_argv"
         raise RuntimeAdapterError(msg)
+
+
+def _runtime_argv(
+    argv: tuple[str, ...],
+    *,
+    platform: ExecutionPlatform,
+) -> tuple[str, ...]:
+    """Resolve only the allowlisted Windows command shim at process start."""
+    if platform not in {"nt", "posix"}:
+        msg = "unsupported_execution_platform"
+        raise RuntimeAdapterError(msg)
+    if platform == "nt" and argv[0] == "npx":
+        return ("npx.cmd", *argv[1:])
+    return argv
 
 
 class DispatchRuntimeRunner:
@@ -144,6 +159,7 @@ class VercelRuntimeRunner:
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
         environ: Mapping[str, str] | None = None,
         run_process: RunProcess = subprocess.run,
+        platform: ExecutionPlatform = os.name,
     ) -> None:
         if timeout_seconds <= 0:
             msg = "child_timeout_invalid"
@@ -151,6 +167,7 @@ class VercelRuntimeRunner:
         self._source = dict(os.environ if environ is None else environ)
         self._timeout = timeout_seconds
         self._run_process = run_process
+        self._platform = platform
 
     def execute(self, command: ChildCommand) -> VercelResult:
         sources = tuple(command.env.values())
@@ -167,7 +184,7 @@ class VercelRuntimeRunner:
             environment[target.removesuffix("_FROM_ENV")] = credentials[source]
         try:
             completed = self._run_process(
-                command.argv,
+                _runtime_argv(command.argv, platform=self._platform),
                 cwd=command.cwd.resolve(strict=True),
                 env=environment,
                 capture_output=True,
