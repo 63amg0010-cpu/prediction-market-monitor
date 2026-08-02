@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Final, cast
 
 import httpx2
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from apps.api.scripts.free_tier_captures import (
     windows_acl_owner_only as _windows_acl_owner_only,
 )
