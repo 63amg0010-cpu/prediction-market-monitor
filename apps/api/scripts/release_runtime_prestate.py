@@ -132,7 +132,7 @@ def capture_composite_prestate(
                 project_name=name,
                 project_id_env=project_env,
                 token_env=token_env,
-                protected_ref="refs/heads/main",
+                protected_ref="origin/main",
                 expected_sha=expected_sha,
                 expected_plan_sha256=bindings.approved_plan_sha256,
                 activation_nonce=activation_nonce,

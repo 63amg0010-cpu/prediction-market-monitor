@@ -4,10 +4,14 @@ from __future__ import annotations
 # pyright: reportAny=false, reportArgumentType=false, reportExplicitAny=false
 # pyright: reportUnannotatedClassAttribute=false, reportUnusedCallResult=false
 import subprocess
+from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
+from uuid import UUID
 
 import pytest
 from app.services.release.receipts import canonicalize
+from scripts import release_runtime_prestate
 from scripts.release_runtime_http import (
     HttpRuntimeError,
     ReadOnlyHttpProbe,
@@ -23,7 +27,7 @@ from scripts.release_runtime_subprocess import (
     SecretRuntimeRunner,
     VercelRuntimeRunner,
 )
-from scripts.release_vercel_models import ChildCommand
+from scripts.release_vercel_models import ChildCommand, VercelPrestateRequest
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -163,3 +167,99 @@ def test_http_probe_is_get_only_bounded_and_never_redirects() -> None:
     assert urls == ["https://api.example.test/health"]
     with pytest.raises(HttpRuntimeError, match="http_url_invalid"):
         _ = probe.fetch("http://api.example.test/health")
+
+
+def test_composite_prestate_uses_the_validated_origin_main_ref(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = tmp_path / "plan.md"
+    plan.write_text("approved plan", encoding="utf-8")
+    requests: list[VercelPrestateRequest] = []
+
+    def front_matter(_path: Path) -> dict[str, object]:
+        return {"plan_path": "plan.md"}
+
+    def review_bindings(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(
+            reviewed_sha="a" * 40,
+            approved_plan_sha256="b" * 64,
+            approval_round_id="c" * 64,
+            approval_launch_sha256s=("d" * 64, "e" * 64),
+        )
+
+    class FakeReviewAdapter:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def inspect(self, _path: Path) -> object:
+            return object()
+
+    def prestate(
+        request: VercelPrestateRequest,
+        _runner: object,
+    ) -> dict[str, object]:
+        requests.append(request)
+        return {
+            "deployment_id": f"deployment-{request.project_kind}",
+            "deployment_url": f"https://{request.project_kind}.vercel.app",
+            "alias": request.alias,
+            "protected_source_sha": "a" * 40,
+        }
+
+    monkeypatch.setattr(
+        release_runtime_prestate,
+        "_review_front_matter",
+        front_matter,
+    )
+    monkeypatch.setattr(
+        release_runtime_prestate,
+        "validate_review_record",
+        review_bindings,
+    )
+    monkeypatch.setattr(
+        release_runtime_prestate,
+        "GitStatReviewAdapter",
+        FakeReviewAdapter,
+    )
+    monkeypatch.setattr(
+        release_runtime_prestate,
+        "run_vercel_prestate",
+        prestate,
+    )
+
+    async def database_time(_engine: object) -> datetime:
+        return datetime(2026, 8, 2, tzinfo=UTC)
+
+    monkeypatch.setattr(
+        release_runtime_prestate,
+        "_database_time",
+        database_time,
+    )
+    receipt = release_runtime_prestate.capture_composite_prestate(
+        repository_root=tmp_path,
+        engine=object(),  # type: ignore[arg-type]
+        review_record=tmp_path / "review.md",
+        live_plan=plan,
+        expected_sha="a" * 40,
+        activation_nonce=UUID("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"),
+        team_slug="63amg0010-5358s-projects",
+        org_id_env="VERCEL_ORG_ID",
+        api_project_name="prediction-monitor-api",
+        api_project_id_env="VERCEL_API_PROJECT_ID",
+        web_project_name="prediction-monitor-web",
+        web_project_id_env="VERCEL_WEB_PROJECT_ID",
+        token_env="VERCEL_TOKEN",
+        environ={
+            "VERCEL_ORG_ID": "org",
+            "VERCEL_API_PROJECT_ID": "api",
+            "VERCEL_WEB_PROJECT_ID": "web",
+            "VERCEL_TOKEN": "token",
+        },
+    )
+
+    assert receipt["accepted"] is True
+    assert [request.protected_ref for request in requests] == [
+        "origin/main",
+        "origin/main",
+    ]
