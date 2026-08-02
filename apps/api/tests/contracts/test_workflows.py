@@ -175,9 +175,17 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
         "${{ secrets.PG_DUMP_DATABASE_URL }}"
     )
     rendered = yaml.safe_dump(workflow)
-    assert "MIGRATION_DATABASE_URL" in rendered
-    assert "PG_DUMP_DATABASE_URL" in rendered
-    assert "PG_RESTORE_DATABASE_URL" in rendered
+    assert all(
+        value in rendered
+        for value in (
+            "MIGRATION_DATABASE_URL",
+            "PG_DUMP_DATABASE_URL",
+            "PG_RESTORE_DATABASE_URL",
+            "postgresql-client-17",
+            "pg_dump --version",
+            "PostgreSQL\\) 17\\.",
+        )
+    )
     assert "pg_dump --format=custom --no-owner --no-acl" in rendered
     assert '"$PG_DUMP_DATABASE_URL"' in rendered
     validation_commands = "\n".join(
