@@ -14,8 +14,11 @@ TEXT_SUFFIXES = frozenset(
     {
         ".css",
         ".html",
+        ".cjs",
+        ".js",
         ".json",
         ".md",
+        ".mjs",
         ".py",
         ".sql",
         ".toml",
@@ -203,7 +206,7 @@ def _secret_file_findings(root: Path, relative: str) -> list[Finding]:
     except ValueError:
         return [Finding("unscannable_changed_file", relative)]
     findings: list[Finding] = []
-    risky_path = DUMP_WORDS.search(relative) is not None
+    risky_path = _artifact_like(relative) and DUMP_WORDS.search(relative) is not None
     if risky_path and not _encrypted_or_redacted(relative):
         findings.append(Finding("plaintext_dump_path", relative))
     if any(raw.startswith(magic) for magic in MAGIC_BYTES) and (

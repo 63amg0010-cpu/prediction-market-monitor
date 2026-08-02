@@ -189,6 +189,25 @@ def test_secret_scan_rejects_plaintext_capture_and_magic_bytes(
     assert codes == {"forbidden_magic_bytes", "plaintext_dump_path"}
 
 
+def test_secret_scan_treats_capture_named_source_as_source_code(
+    tmp_path: Path,
+) -> None:
+    root, base_sha = _repository(tmp_path)
+    reviewed_sha = _commit(
+        root,
+        "apps/api/scripts/provider_capture_projection.mjs",
+        'export const status = "redacted"\n',
+    )
+    output = root / "attempt" / "secret-scan.json"
+
+    exit_code = run_secret_static_scan(
+        SecretScanRequest(root, base_sha, reviewed_sha, output)
+    )
+
+    assert exit_code == 0
+    assert _document(output)["accepted"] is True
+
+
 def test_code_quality_rejects_suppressions_and_python_stubs(tmp_path: Path) -> None:
     root, base_sha = _repository(tmp_path)
     type_marker = "# type:"
