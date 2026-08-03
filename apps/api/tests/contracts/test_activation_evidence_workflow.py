@@ -173,6 +173,18 @@ def test_workflow_uses_the_api_model_for_canonical_url_hashing() -> None:
     assert "audience=monitor-control" in source
 
 
+def test_workflow_canonicalizes_the_api_receipt_before_archiving() -> None:
+    # Given: FastAPI may emit schema-valid JSON in model field order.
+    source = WORKFLOW.read_text(encoding="utf-8")
+
+    # When/Then: the protected workflow rewrites it through the shared model.
+    assert "> activation-evidence-public-receipt.raw.json" in source
+    assert "activation_evidence_models.py receipt" in source
+    assert "< activation-evidence-public-receipt.raw.json" in source
+    assert "> activation-evidence-public-receipt.json" in source
+    assert "rm -f request.json activation-evidence-public-receipt.raw.json" in source
+
+
 def test_migration_downloads_only_the_exact_run_owned_activation_artifact() -> None:
     # Given: the protected migration workflow's 0011 attestation verifier.
     source = (ROOT / ".github" / "workflows" / "migrate.yml").read_text(

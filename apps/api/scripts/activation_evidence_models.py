@@ -93,16 +93,38 @@ class ActivationEvidenceReceipt(ActivationEvidenceModel):
     database_time: datetime
 
 
+def canonical_evidence_receipt_bytes(receipt: ActivationEvidenceReceipt) -> bytes:
+    """Return the normalized bytes consumed by migration 0011."""
+    return orjson.dumps(
+        receipt.model_dump(mode="json"),
+        option=orjson.OPT_SORT_KEYS,
+    )
+
+
 def main() -> int:
-    """Canonicalize one schema-closed attestation from standard input."""
-    try:
-        attestation = PublicActivationAttestation.model_validate_json(
-            sys.stdin.buffer.read()
-        )
-    except ValidationError:
-        _ = sys.stderr.write("activation attestation rejected\n")
+    """Canonicalize one schema-closed activation document from standard input."""
+    arguments = sys.argv[1:]
+    if len(arguments) > 1:
+        _ = sys.stderr.write("activation evidence rejected\n")
         return 2
-    _ = sys.stdout.buffer.write(canonical_attestation_bytes(attestation))
+    kind = arguments[0] if arguments else "attestation"
+    try:
+        raw = sys.stdin.buffer.read()
+        if kind == "attestation":
+            canonical = canonical_attestation_bytes(
+                PublicActivationAttestation.model_validate_json(raw)
+            )
+        elif kind == "receipt":
+            canonical = canonical_evidence_receipt_bytes(
+                ActivationEvidenceReceipt.model_validate_json(raw)
+            )
+        else:
+            _ = sys.stderr.write("activation evidence rejected\n")
+            return 2
+    except ValidationError:
+        _ = sys.stderr.write("activation evidence rejected\n")
+        return 2
+    _ = sys.stdout.buffer.write(canonical)
     return 0
 
 
@@ -111,6 +133,7 @@ __all__ = (
     "ActivationEvidenceVerifyRequest",
     "PublicActivationAttestation",
     "canonical_attestation_bytes",
+    "canonical_evidence_receipt_bytes",
 )
 
 

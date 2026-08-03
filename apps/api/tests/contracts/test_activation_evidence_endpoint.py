@@ -17,9 +17,11 @@ from app.services.identity.github import GitHubOIDCClaims
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from scripts.activation_evidence_models import (
+    ActivationEvidenceReceipt,
     ActivationEvidenceVerifyRequest,
     PublicActivationAttestation,
     canonical_attestation_bytes,
+    canonical_evidence_receipt_bytes,
 )
 
 NOW = datetime(2026, 7, 28, 11, tzinfo=UTC)
@@ -290,3 +292,32 @@ def test_attestation_url_normalization_has_one_canonical_hash() -> None:
             PublicActivationAttestation.model_validate_json(canonical)
         )
     ).hexdigest()
+
+
+def test_activation_receipt_field_order_has_one_canonical_hash() -> None:
+    # Given: FastAPI's valid field-order response rather than sorted JSON keys.
+    receipt = ActivationEvidenceReceipt.model_validate(
+        {
+            "schema_version": 1,
+            "accepted": True,
+            "activation_nonce": "11111111-1111-4111-8111-111111111111",
+            "attestation_generation": 1,
+            "attestation_sha256": "a" * 64,
+            "reservation_receipt_sha256": "b" * 64,
+            "dispatch_nonce": "22222222-2222-4222-8222-222222222222",
+            "attempt": 1,
+            "run_id": 123,
+            "run_attempt": 1,
+            "head_sha": "c" * 40,
+            "database_time": "2026-08-03T05:48:33.899994Z",
+        }
+    )
+
+    # When: the shared protected-boundary canonicalizer serializes it.
+    canonical = canonical_evidence_receipt_bytes(receipt)
+
+    # Then: keys are sorted and repeated canonicalization is byte-identical.
+    assert canonical.startswith(b'{"accepted":true,"activation_nonce":')
+    assert canonical == canonical_evidence_receipt_bytes(
+        ActivationEvidenceReceipt.model_validate_json(canonical)
+    )
