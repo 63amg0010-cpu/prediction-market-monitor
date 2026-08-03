@@ -11,7 +11,7 @@ Argv: TypeAlias = tuple[str, ...]  # noqa: UP040 - wrappers support system Pytho
 
 EXPECTED_DATABASE: Final = "monitor_migration_qa"
 REQUIRED_START: Final = "20260726_0009"
-EXPECTED_HEAD: Final = "20260727_0011"
+EXPECTED_HEAD: Final = "20260803_0012"
 GUARD_FILE: Final = "apps/api/tests/fixtures/release-gate/local-qa-db-guard.json"
 GATE_PREFIX: Final = (
     "uv",

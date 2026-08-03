@@ -22,7 +22,7 @@ def test_0010_follows_the_characterized_0009_baseline() -> None:
     # Then: 0010 extends 0009 without branching or rewriting history.
     assert revision is not None
     assert revision.down_revision == "20260726_0009"
-    assert script.get_heads() == ["20260727_0011"]
+    assert script.get_heads() == ["20260803_0012"]
 
 
 def test_0010_declares_the_exact_search_and_enum_boundary_contract() -> None:

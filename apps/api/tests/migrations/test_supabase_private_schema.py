@@ -8,7 +8,7 @@ from app.db.models import metadata
 
 API_ROOT = Path(__file__).parents[2]
 ALEMBIC_INI = API_ROOT / "alembic.ini"
-EXPECTED_HEAD = "20260727_0011"
+EXPECTED_HEAD = "20260803_0012"
 RELEASE_COMPATIBILITY_TABLES = {
     "release_roots",
     "release_no_spend_receipts",

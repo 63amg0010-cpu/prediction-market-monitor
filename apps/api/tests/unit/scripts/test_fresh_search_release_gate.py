@@ -271,3 +271,14 @@ def test_mutating_sql_uses_one_database_clock_and_never_claims_restored() -> Non
     assert "transaction_timestamp()" not in mutation_sql
     assert ":db_now" in mutation_sql
     assert "'restored'" not in mutation_sql
+
+
+def test_activation_budget_uses_the_reviewed_no_spend_thresholds() -> None:
+    # Given/When: the activation budget write is rendered.
+    statement = str(activation_sql.INSERT_BUDGET)
+
+    # Then: a fresh activation and an idempotent repair both use policy 70/80.
+    assert ":effective, :expires, 0, 70, 80" in statement
+    assert "soft_stop_units = EXCLUDED.soft_stop_units" in statement
+    assert "hard_stop_units = EXCLUDED.hard_stop_units" in statement
+    assert "paid_spend_enabled = false" in statement
