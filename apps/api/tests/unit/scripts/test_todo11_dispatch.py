@@ -104,12 +104,17 @@ def _reservation(base: str = "ci", attempt: int = 1) -> JsonObject:
         **_root("dispatch-reserve"),
         "attempt": attempt,
         "dispatch_nonce": DISPATCH,
-        "workflow_file": "ci.yml",
+        "workflow": "ci.yml",
         "display_title": f"{base}-{DISPATCH}-attempt-{attempt}",
-        "selection_floor_at": FLOOR,
-        "claimed_run_id": 41,
+        "database_timestamps": {
+            "created_at_db": FLOOR,
+            "reserved_at_db": FLOOR,
+            "selection_floor_at": FLOOR,
+            "claimed_at_db": None,
+        },
         "operation_inputs": {},
         "predecessor_receipt_sha256": "9" * 64,
+        "receipt_sha256": "8" * 64,
     }
 
 
@@ -212,7 +217,7 @@ def test_dispatch_workflow_uses_schema_closed_spec_and_rejects_bootstrap() -> No
         expected_plan_sha256=PLAN, activation_nonce=NONCE,
         dispatch_nonce=DISPATCH,
     )
-    reservation_sha = sha256_hex(canonical_bytes(_reservation()))
+    reservation_sha = "8" * 64
     assert runner.calls == [(
         "gh", "workflow", "run", "ci.yml", "--repo", REPOSITORY, "--ref", "main",
         "-f", "attempt=1", "-f", f"expected_commit_sha={SHA}",
@@ -276,8 +281,8 @@ def test_verify_and_recover_bind_exact_run_and_never_redispatch() -> None:
                  "dispatch_nonce": DISPATCH, "attempt": 1}
     operation = {
         **_root("ci"), "dispatch_nonce": DISPATCH, "run_id": 41,
-        "reservation_receipt_sha256": sha256_hex(canonical_bytes(reservation)),
-        "predecessor_receipt_sha256": sha256_hex(canonical_bytes(reservation)),
+        "reservation_receipt_sha256": "8" * 64,
+        "predecessor_receipt_sha256": "8" * 64,
     }
     verified = verify_receipt(
         canonical_bytes(operation), selection=selection, reservation=reservation,

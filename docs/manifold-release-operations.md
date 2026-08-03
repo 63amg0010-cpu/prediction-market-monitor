@@ -10,6 +10,7 @@ The repository has one Alembic head: `20260727_0011`. The release path is delibe
 - `20260727_0010`: compatibility revision and durable release ledger, with no Manifold source row;
 - `20260803_0010a`: generic release-receipt foundation, with collection still disabled;
 - `20260803_0010b`: append-only reviewed-root rebind after the receipt-export repair, with no source mutation;
+- `20260803_0010c`: append-only reviewed-root rebind after aligning the workflow dispatcher with the durable reservation receipt schema, with no source mutation;
 - `20260727_0011`: append-only activation evidence and a prepared, disabled, unlinked Manifold source.
 
 Neither migration activates collection. Manifold becomes active only at the later activation commit.
