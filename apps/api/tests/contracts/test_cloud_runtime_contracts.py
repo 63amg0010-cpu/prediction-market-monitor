@@ -123,6 +123,7 @@ def test_vercel_routes_all_fastapi_surfaces_to_the_python_function() -> None:
 
     # When/Then: actual API, cron, and OpenAPI paths resolve to the ASGI entrypoint.
     for path in (
+        "/internal/release/workflow-dispatch-claim",
         "/v1/health",
         "/v1/dashboard",
         "/api/cron/daily",
