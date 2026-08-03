@@ -201,9 +201,13 @@ jobs:
             -H "Content-Type: application/json" \
             --data-binary @request.json \
             "${MONITOR_API_URL}/internal/release/activation-evidence-verify" \
+            > activation-evidence-public-receipt.raw.json
+          uv run --quiet --package monitor-api \
+            python apps/api/scripts/activation_evidence_models.py receipt \
+            < activation-evidence-public-receipt.raw.json \
             > activation-evidence-public-receipt.json
           jq -e 'type == "object"' activation-evidence-public-receipt.json >/dev/null
-          rm -f request.json
+          rm -f request.json activation-evidence-public-receipt.raw.json
       - name: Complete durable activation-evidence operation
         run: |
           uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
