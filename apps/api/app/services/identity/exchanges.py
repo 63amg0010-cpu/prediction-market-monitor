@@ -223,7 +223,7 @@ class IdentityExchangeService:
                 principal_id=authorization.principal_id,
                 kind=authorization.kind,
                 credential_version=self._policy.github_credential_version,
-                workflow_ref=claims.job_workflow_ref,
+                workflow_ref=claims.workflow_ref,
                 valid_from=now,
                 valid_until=expires_at,
             )

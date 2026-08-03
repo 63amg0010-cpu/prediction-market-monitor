@@ -65,9 +65,11 @@ class AcceptedOidc:
         return GitHubOIDCClaims(
             iss="https://token.actions.githubusercontent.com",
             aud="monitor-control",
-            sub="repo:owner/repository:environment:production-verifier",
+            sub="repo:owner@1/repository@2:environment:production-verifier",
             repository="owner/repository",
-            job_workflow_ref=(
+            repository_id="2",
+            repository_owner_id="1",
+            workflow_ref=(
                 "owner/repository/.github/workflows/"
                 "verify.yml@refs/heads/main"
             ),

@@ -23,6 +23,7 @@ from app.services.identity.github import (
     GITHUB_OIDC_AUDIENCE,
     GITHUB_OIDC_ISSUER,
     GitHubOIDCClaims,
+    expected_subject,
 )
 
 if TYPE_CHECKING:
@@ -96,9 +97,6 @@ class ActivationEvidenceOidcAuthorizer:
         now = self._clock.now()
         claims = await self._verifier.verify(token, now)
         now_seconds = int(now.timestamp())
-        expected_subject = (
-            f"repo:{self._repository}:environment:production-collector"
-        )
         expected_workflow = (
             f"{self._repository}/.github/workflows/"
             "activation-evidence.yml@refs/heads/main"
@@ -112,9 +110,10 @@ class ActivationEvidenceOidcAuthorizer:
         matches = (
             claims.issuer == GITHUB_OIDC_ISSUER
             and claims.audience == GITHUB_OIDC_AUDIENCE
-            and claims.subject == expected_subject
+            and claims.subject
+            == expected_subject(claims, "environment:production-collector")
             and claims.repository == self._repository
-            and claims.job_workflow_ref == expected_workflow
+            and claims.workflow_ref == expected_workflow
             and claims.git_ref == "refs/heads/main"
             and claims.environment == "production-collector"
             and claims.run_id == str(payload.run_id)
