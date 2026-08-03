@@ -31,9 +31,11 @@ def _claims() -> dict[str, JsonValue]:
     return {
         "iss": "https://token.actions.githubusercontent.com",
         "aud": "monitor-control",
-        "sub": "repo:owner/monitor:environment:production",
+        "sub": "repo:owner@1/monitor@2:environment:production",
         "repository": "owner/monitor",
-        "job_workflow_ref": (
+        "repository_id": "2",
+        "repository_owner_id": "1",
+        "workflow_ref": (
             "owner/monitor/.github/workflows/collect.yml@refs/heads/main"
         ),
         "ref": "refs/heads/main",

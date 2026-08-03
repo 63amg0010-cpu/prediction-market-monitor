@@ -10,7 +10,7 @@ REVISION = "20260727_0011"
 MIGRATION_STATE = API_ROOT / "scripts" / "activation_migration_state.py"
 
 
-def test_0011_follows_0010d_without_branching() -> None:
+def test_0011_follows_0010e_without_branching() -> None:
     # Given: the committed 0010 compatibility boundary.
     script = ScriptDirectory.from_config(Config(str(API_ROOT / "alembic.ini")))
 
@@ -19,7 +19,7 @@ def test_0011_follows_0010d_without_branching() -> None:
 
     # Then: 0011 is the sole head and preserves the 0010 ledger schema.
     assert revision is not None
-    assert revision.down_revision == "20260803_0010d"
+    assert revision.down_revision == "20260803_0010e"
     assert script.get_heads() == [REVISION]
 
 
@@ -29,7 +29,7 @@ def test_0011_renders_append_only_activation_schema_and_inert_source() -> None:
     config = Config(str(API_ROOT / "alembic.ini"), output_buffer=output)
 
     # When: Alembic renders only the 0011 schema boundary.
-    command.upgrade(config, "20260803_0010d:20260727_0011", sql=True)
+    command.upgrade(config, "20260803_0010e:20260727_0011", sql=True)
     ddl = output.getvalue()
 
     # Then: durable evidence/state tables and fail-closed source pointers exist.
@@ -55,7 +55,7 @@ def test_0011_offline_downgrade_is_inert_and_retains_evidence() -> None:
     config = Config(str(API_ROOT / "alembic.ini"), output_buffer=output)
 
     # When: an ordinary technical downgrade is rendered.
-    command.downgrade(config, "20260727_0011:20260803_0010d", sql=True)
+    command.downgrade(config, "20260727_0011:20260803_0010e", sql=True)
     ddl = output.getvalue()
 
     # Then: the source is disabled and unlinked without dropping evidence tables.

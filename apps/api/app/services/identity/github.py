@@ -28,7 +28,10 @@ class GitHubOIDCClaims(BaseModel):
     audience: str = Field(alias="aud")
     subject: str = Field(alias="sub")
     repository: str
-    job_workflow_ref: str
+    repository_id: str = Field(pattern=r"^[1-9][0-9]*$")
+    repository_owner_id: str = Field(pattern=r"^[1-9][0-9]*$")
+    workflow_ref: str
+    job_workflow_ref: str | None = None
     git_ref: str = Field(alias="ref")
     head_sha: str = Field(alias="sha", pattern=r"^[0-9a-f]{40}$")
     environment: str | None = None
@@ -83,7 +86,7 @@ class GitHubClaimPolicy:
             (
                 candidate
                 for candidate in self.workflows
-                if candidate.workflow_ref == claims.job_workflow_ref
+                if candidate.workflow_ref == claims.workflow_ref
                 and candidate.git_ref == claims.git_ref
                 and candidate.environment == claims.environment
             ),
@@ -112,9 +115,18 @@ class GitHubClaimPolicy:
             principal_id=PrincipalId(f"github:{claims.repository}:{claims.run_id}"),
             kind=kind,
             scopes=rule.scopes,
-            replay_key=f"{claims.run_id}|{claims.job_workflow_ref}|{claims.run_attempt}|{claims.jwt_id}",
+            replay_key=f"{claims.run_id}|{claims.workflow_ref}|{claims.run_attempt}|{claims.jwt_id}",
             retain_until=datetime.fromtimestamp(claims.expires_at, tz=UTC),
         )
+
+
+def expected_subject(claims: GitHubOIDCClaims, context: str) -> str:
+    """Build GitHub's immutable repository subject from signed claim IDs."""
+    owner, repository = claims.repository.split("/", maxsplit=1)
+    return (
+        f"repo:{owner}@{claims.repository_owner_id}/"
+        f"{repository}@{claims.repository_id}:{context}"
+    )
 
 
 @final

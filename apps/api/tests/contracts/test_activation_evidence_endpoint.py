@@ -87,9 +87,15 @@ def _claims() -> GitHubOIDCClaims:
         {
             "iss": "https://token.actions.githubusercontent.com",
             "aud": "monitor-control",
-            "sub": f"repo:{REPOSITORY}:environment:production-collector",
+            "sub": (
+                "repo:63amg0010-cpu@256795069/"
+                "prediction-market-monitor@1310655558:"
+                "environment:production-collector"
+            ),
             "repository": REPOSITORY,
-            "job_workflow_ref": (
+            "repository_id": "1310655558",
+            "repository_owner_id": "256795069",
+            "workflow_ref": (
                 f"{REPOSITORY}/.github/workflows/"
                 "activation-evidence.yml@refs/heads/main"
             ),
@@ -206,7 +212,9 @@ async def test_raw_github_oidc_token_is_authorized_directly() -> None:
         ("audience", "broader-audience"),
         ("subject", "repo:foreign/repository:environment:production-collector"),
         ("repository", "foreign/repository"),
-        ("job_workflow_ref", "foreign/repository/.github/workflows/other.yml@main"),
+        ("repository_id", "999"),
+        ("repository_owner_id", "998"),
+        ("workflow_ref", "foreign/repository/.github/workflows/other.yml@main"),
         ("git_ref", "refs/heads/release"),
         ("environment", "production"),
         ("run_id", "124"),

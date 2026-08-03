@@ -26,9 +26,11 @@ def _github_claims() -> GitHubOIDCClaims:
         {
             "iss": "https://token.actions.githubusercontent.com",
             "aud": "monitor-control",
-            "sub": "repo:owner/monitor:environment:production",
+            "sub": "repo:owner@1/monitor@2:environment:production",
             "repository": "owner/monitor",
-            "job_workflow_ref": (
+            "repository_id": "2",
+            "repository_owner_id": "1",
+            "workflow_ref": (
                 "owner/monitor/.github/workflows/collect.yml@refs/heads/main"
             ),
             "ref": "refs/heads/main",
@@ -49,7 +51,7 @@ def _github_claims() -> GitHubOIDCClaims:
     [
         ("repository", "attacker/fork"),
         (
-            "job_workflow_ref",
+            "workflow_ref",
             "owner/monitor/.github/workflows/evil.yml@refs/heads/main",
         ),
         ("git_ref", "refs/heads/untrusted"),

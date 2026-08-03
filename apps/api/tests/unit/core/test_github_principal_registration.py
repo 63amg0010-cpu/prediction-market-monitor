@@ -117,9 +117,11 @@ def _claims(now: datetime, *, repository: str = "owner/monitor") -> GitHubOIDCCl
         {
             "iss": "https://token.actions.githubusercontent.com",
             "aud": "monitor-control",
-            "sub": "repo:owner/monitor:environment:production",
+            "sub": "repo:owner@1/monitor@2:environment:production",
             "repository": repository,
-            "job_workflow_ref": (
+            "repository_id": "2",
+            "repository_owner_id": "1",
+            "workflow_ref": (
                 "owner/monitor/.github/workflows/collect.yml@refs/heads/main"
             ),
             "ref": "refs/heads/main",
@@ -147,7 +149,7 @@ def _service(
         "owner/monitor",
         (
             GitHubWorkflowRule(
-                claims.job_workflow_ref,
+                claims.workflow_ref,
                 "refs/heads/main",
                 "production",
                 granted_scopes,
@@ -265,7 +267,7 @@ async def test_first_bff_exchange_registers_authorizable_deployment() -> None:
                     "owner/monitor",
                     (
                         GitHubWorkflowRule(
-                            _claims(now).job_workflow_ref,
+                            _claims(now).workflow_ref,
                             "refs/heads/main",
                             "production",
                             frozenset({Scope.COLLECTOR_MATERIALIZE}),

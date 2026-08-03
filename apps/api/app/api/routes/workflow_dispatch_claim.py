@@ -14,6 +14,7 @@ from app.services.identity.github import (
     GITHUB_OIDC_AUDIENCE,
     GITHUB_OIDC_ISSUER,
     GitHubOIDCClaims,
+    expected_subject,
 )
 from app.services.release.receipts import canonicalize
 from app.services.release.workflow_claim_receipts import build_claim_receipt
@@ -105,7 +106,7 @@ class WorkflowDispatchClaimOidcAuthorizer:
         now = self._clock.now()
         claims = await self._verifier.verify(token, now)
         now_seconds = int(now.timestamp())
-        subject_suffix = (
+        subject_context = (
             f"environment:{payload.environment}"
             if payload.environment is not None
             else f"ref:{payload.ref}"
@@ -113,9 +114,9 @@ class WorkflowDispatchClaimOidcAuthorizer:
         matches = (
             claims.issuer == GITHUB_OIDC_ISSUER
             and claims.audience == GITHUB_OIDC_AUDIENCE
-            and claims.subject == f"repo:{payload.repository}:{subject_suffix}"
+            and claims.subject == expected_subject(claims, subject_context)
             and claims.repository == self._repository == payload.repository
-            and claims.job_workflow_ref
+            and claims.workflow_ref
             == (
                 f"{payload.repository}/.github/workflows/"
                 f"{payload.workflow}@{payload.ref}"
