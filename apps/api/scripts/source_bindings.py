@@ -199,8 +199,6 @@ class BindingStateMachine:
                     "set",
                     "MONITOR_SOURCE_BINDINGS_JSON",
                     *TARGET_ARGS,
-                    "--body",
-                    "-",
                 ),
                 value,
             )
@@ -209,7 +207,7 @@ class BindingStateMachine:
     def _set_variable(self, name: str, value: str) -> None:
         _ = self._github.execute(
             GitHubCommand(
-                ("gh", "variable", "set", name, *TARGET_ARGS, "--body", "-"),
+                ("gh", "variable", "set", name, *TARGET_ARGS),
                 value,
             )
         )

@@ -55,8 +55,6 @@ def set_secret(github: GitHub, value: str) -> None:
                 "set",
                 "MONITOR_SOURCE_BINDINGS_JSON",
                 *TARGET_ARGS,
-                "--body",
-                "-",
             ),
             value,
         )
@@ -66,7 +64,7 @@ def set_secret(github: GitHub, value: str) -> None:
 def set_variable(github: GitHub, name: str, value: str) -> None:
     _ = github.execute(
         GitHubCommand(
-            ("gh", "variable", "set", name, *TARGET_ARGS, "--body", "-"),
+            ("gh", "variable", "set", name, *TARGET_ARGS),
             value,
         )
     )
