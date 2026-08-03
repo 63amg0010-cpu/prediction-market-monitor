@@ -14,6 +14,7 @@ def test_0010a_is_the_inert_release_foundation_boundary() -> None:
     correction = script.get_revision("20260803_0010a")
     rebind = script.get_revision("20260803_0010b")
     dispatch_rebind = script.get_revision("20260803_0010c")
+    deploy_rebind = script.get_revision("20260803_0010d")
     head = script.get_revision("20260727_0011")
 
     assert correction is not None
@@ -22,8 +23,10 @@ def test_0010a_is_the_inert_release_foundation_boundary() -> None:
     assert rebind.down_revision == "20260803_0010a"
     assert dispatch_rebind is not None
     assert dispatch_rebind.down_revision == "20260803_0010b"
+    assert deploy_rebind is not None
+    assert deploy_rebind.down_revision == "20260803_0010c"
     assert head is not None
-    assert head.down_revision == "20260803_0010c"
+    assert head.down_revision == "20260803_0010d"
 
 
 def test_0010a_renders_generic_receipts_without_manifold_source() -> None:
@@ -70,6 +73,18 @@ def test_0010c_is_an_inert_dispatch_compatibility_rebind() -> None:
     config = Config(str(API_ROOT / "alembic.ini"), output_buffer=output)
 
     command.upgrade(config, "20260803_0010b:20260803_0010c", sql=True)
+
+    sql = output.getvalue()
+    assert "SELECT 1" in sql
+    assert "manifold-comments" not in sql
+    assert "community_sources" not in sql
+
+
+def test_0010d_is_an_inert_deployment_route_rebind() -> None:
+    output = StringIO()
+    config = Config(str(API_ROOT / "alembic.ini"), output_buffer=output)
+
+    command.upgrade(config, "20260803_0010c:20260803_0010d", sql=True)
 
     sql = output.getvalue()
     assert "SELECT 1" in sql
