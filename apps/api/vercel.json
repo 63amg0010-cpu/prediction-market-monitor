@@ -3,6 +3,7 @@
   "git": { "deploymentEnabled": false },
   "builds": [{ "src": "api/index.py", "use": "@vercel/python" }],
   "routes": [
+    { "src": "/internal/(.*)", "dest": "api/index.py" },
     { "src": "/v1/(.*)", "dest": "api/index.py" },
     { "src": "/api/cron/daily", "dest": "api/index.py" },
     { "src": "/openapi.json", "dest": "api/index.py" },
