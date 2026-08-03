@@ -26,8 +26,10 @@ def test_0012_repairs_only_the_reviewed_scope_and_zeroed_budget() -> None:
 
     sql = output.getvalue()
     assert "phase1-reviewed-v1+manifold-v1" in sql
-    assert "soft_stop_units = 70" in sql
-    assert "hard_stop_units = 80" in sql
-    assert "budget.observed_units = 0" in sql
-    assert "budget.paid_spend_enabled = false" in sql
-    assert "release-gate:no-spend" in sql
+    assert "INSERT INTO provider_budget_records" in sql
+    assert "0, 70, 80, false" in sql
+    assert "UPDATE provider_budget_records" not in sql
+    assert "SET current_budget_id = repaired_budget.id" in sql
+    assert "INSERT INTO source_activation_state_transitions" in sql
+    assert "latest_transition.current_budget_id <> old_budget.id" in sql
+    assert "free-tier-70-80-v1-repair" in sql

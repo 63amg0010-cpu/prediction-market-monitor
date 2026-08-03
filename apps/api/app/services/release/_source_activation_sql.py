@@ -44,14 +44,7 @@ INSERT_BUDGET: Final[TextClause] = text(
     ) VALUES (
         :budget_id, 'manifold', :effective, :expires, 0, 70, 80,
         false, :budget_sha, 'release-gate:no-spend', :db_now
-    ) ON CONFLICT (provider, billing_period_start) DO UPDATE SET
-        soft_stop_units = EXCLUDED.soft_stop_units,
-        hard_stop_units = EXCLUDED.hard_stop_units
-    WHERE provider_budget_records.observed_units = 0
-      AND provider_budget_records.soft_stop_units IN (0, 70)
-      AND provider_budget_records.hard_stop_units IN (0, 80)
-      AND provider_budget_records.paid_spend_enabled = false
-      AND provider_budget_records.evidence_sha256 = EXCLUDED.evidence_sha256
+    ) ON CONFLICT (provider, billing_period_start) DO NOTHING
     """
 )
 ACTIVATE_SOURCE: Final[TextClause] = text(
