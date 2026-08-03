@@ -32,6 +32,7 @@ def test_phase_two_contract_migration_is_the_only_current_head() -> None:
     assert script.get_heads() == [EXPECTED_HEAD]
     assert tuple(item.revision for item in revisions) == (
         "20260727_0011",
+        "20260803_0010d",
         "20260803_0010c",
         "20260803_0010b",
         "20260803_0010a",
@@ -47,6 +48,7 @@ def test_phase_two_contract_migration_is_the_only_current_head() -> None:
         "20260721_0001",
     )
     assert tuple(item.down_revision for item in revisions) == (
+        "20260803_0010d",
         "20260803_0010c",
         "20260803_0010b",
         "20260803_0010a",

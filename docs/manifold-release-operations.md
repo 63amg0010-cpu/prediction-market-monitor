@@ -11,6 +11,7 @@ The repository has one Alembic head: `20260727_0011`. The release path is delibe
 - `20260803_0010a`: generic release-receipt foundation, with collection still disabled;
 - `20260803_0010b`: append-only reviewed-root rebind after the receipt-export repair, with no source mutation;
 - `20260803_0010c`: append-only reviewed-root rebind after aligning the workflow dispatcher with the durable reservation receipt schema, with no source mutation;
+- `20260803_0010d`: append-only reviewed-root rebind after exposing authenticated release routes in the Vercel API routing table, with no source mutation;
 - `20260727_0011`: append-only activation evidence and a prepared, disabled, unlinked Manifold source.
 
 Neither migration activates collection. Manifold becomes active only at the later activation commit.
