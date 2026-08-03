@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import uuid  # noqa: TC003 - Pydantic resolves this annotation at runtime.
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import ClassVar, Literal
 
 import httpx2
-from pydantic import UUID4, BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.services.configuration.canonical import canonical_sha256
 
@@ -18,7 +19,7 @@ class CadenceSourceResult(BaseModel):
     """One source-local result hash with no provider content."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, extra="forbid")
-    source_id: UUID4
+    source_id: uuid.UUID
     status: Literal["succeeded", "failed"]
     code: Literal[
         "ok",
@@ -83,7 +84,7 @@ class CadenceFailureContext:
 
     schedule_kind: Literal["collection", "verifier"]
     slot_key: str
-    source_ids: tuple[UUID4, ...]
+    source_ids: tuple[uuid.UUID, ...]
     started_at: str
     completed_at: str
 
@@ -111,7 +112,7 @@ def opaque_hash(*parts: str) -> str:
     return sha256("\x00".join(parts).encode()).hexdigest()
 
 
-def failure_receipt_hash(source_id: UUID4, code: str) -> str:
+def failure_receipt_hash(source_id: uuid.UUID, code: str) -> str:
     """Bind a public failure code to its source without exception content."""
     return opaque_hash("cadence-operation-source.v1", str(source_id), code)
 
