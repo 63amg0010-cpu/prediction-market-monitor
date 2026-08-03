@@ -34,6 +34,7 @@ type MigrationRevision = Literal[
     "20260803_0010d",
     "20260803_0010e",
     "20260803_0010f",
+    "20260803_0010g",
     "20260727_0011",
 ]
 
@@ -235,8 +236,9 @@ def validate_dispatch(
         ("upgrade", "20260803_0010d", "rebind-release-root"),
         ("upgrade", "20260803_0010e", "rebind-release-root"),
         ("upgrade", "20260803_0010f", "rebind-release-root"),
+        ("upgrade", "20260803_0010g", "rebind-release-root"),
         ("upgrade", "20260727_0011", "migrate-production"),
-        ("downgrade", "20260803_0010f", "rollback-manifold"),
+        ("downgrade", "20260803_0010g", "rollback-manifold"),
     }
     if tuple_key not in allowed:
         reject("operation_tuple_rejected")
@@ -252,6 +254,7 @@ def validate_dispatch(
         ("upgrade", "20260803_0010d", "rebind-release-root"),
         ("upgrade", "20260803_0010e", "rebind-release-root"),
         ("upgrade", "20260803_0010f", "rebind-release-root"),
+        ("upgrade", "20260803_0010g", "rebind-release-root"),
     }:
         if (
             request.attestation_run_id
@@ -267,6 +270,7 @@ def validate_dispatch(
             "20260803_0010d",
             "20260803_0010e",
             "20260803_0010f",
+            "20260803_0010g",
         } and attempt != 1:
             reject("release_correction_attempt_invalid")
         _validate_bootstrap(request, attempt)
