@@ -8,6 +8,8 @@ The repository has one Alembic head: `20260727_0011`. The release path is delibe
 
 - `20260726_0009`: guarded local/Production starting revision;
 - `20260727_0010`: compatibility revision and durable release ledger, with no Manifold source row;
+- `20260803_0010a`: generic release-receipt foundation, with collection still disabled;
+- `20260803_0010b`: append-only reviewed-root rebind after the receipt-export repair, with no source mutation;
 - `20260727_0011`: append-only activation evidence and a prepared, disabled, unlinked Manifold source.
 
 Neither migration activates collection. Manifold becomes active only at the later activation commit.
@@ -55,9 +57,9 @@ Both wrappers own this exact ordered command surface:
 2. `pnpm install --frozen-lockfile`
 3. `uv run --all-packages ruff check apps/api/app apps/api/scripts apps/api/tests workers/codex-worker/src workers/codex-worker/tests`
 4. `uv run --all-packages basedpyright apps/api/app apps/api/scripts apps/api/tests workers/codex-worker/src workers/codex-worker/tests`
-5. `uv run --package monitor-api pytest apps/api/tests/contracts apps/api/tests/unit -q`
-6. `uv run --package monitor-api pytest apps/api/tests/integration/test_postgres_report_retention.py apps/api/tests/integration/test_collector_workflow.py apps/api/tests/integration/test_dashboard_api.py apps/api/tests/integration/test_verification.py -q -rs`
-7. `uv run --package monitor-api pytest apps/api/tests/migrations/test_20260727_manifold_search.py apps/api/tests/migrations/test_20260727_prepare_manifold.py -q`
+5. `uv run --package monitor-api pytest -p no:cacheprovider --basetemp <attemptDir>/pytest-command-05 apps/api/tests/contracts apps/api/tests/unit -q`
+6. `uv run --package monitor-api pytest -p no:cacheprovider --basetemp <attemptDir>/pytest-command-06 apps/api/tests/integration/test_postgres_report_retention.py apps/api/tests/integration/test_collector_workflow.py apps/api/tests/integration/test_dashboard_api.py apps/api/tests/integration/test_verification.py -q -rs`
+7. `uv run --package monitor-api pytest -p no:cacheprovider --basetemp <attemptDir>/pytest-command-07 apps/api/tests/migrations/test_20260727_manifold_search.py apps/api/tests/migrations/test_20260727_prepare_manifold.py -q`
 8. `uv run --package monitor-api alembic -c apps/api/alembic.ini heads`, requiring sole head `20260727_0011`
 9. `uv run --package monitor-api python apps/api/scripts/fresh_search_release_gate.py local-db --phase upgrade`, with the exact guarded DB/start/target/output arguments supplied by the wrapper
 10. `uv run --package monitor-api python apps/api/scripts/fresh_search_release_gate.py local-db --phase verify`, with exact head/current/index/output arguments supplied by the wrapper

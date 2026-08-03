@@ -39,7 +39,7 @@ _ALLOWED_COMMANDS = {
             "smoke-collection",
         }
     ),
-    "migrate.yml": frozenset({"migrate-0011", "migrate-0011-to-0010a"}),
+    "migrate.yml": frozenset({"migrate-0011", "migrate-0011-to-0010b"}),
     "verify.yml": frozenset({"smoke-verifier"}),
 }
 _APPROVAL_LAUNCH_COUNT = 2

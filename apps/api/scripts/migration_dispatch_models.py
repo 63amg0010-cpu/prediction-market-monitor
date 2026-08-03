@@ -116,7 +116,12 @@ class ValidatedDispatch:
     """Inert exact mutation command derived from a fully validated request."""
 
     operation: Literal["upgrade", "downgrade"]
-    revision: Literal["20260727_0010", "20260803_0010a", "20260727_0011"]
+    revision: Literal[
+        "20260727_0010",
+        "20260803_0010a",
+        "20260803_0010b",
+        "20260727_0011",
+    ]
     attempt: Literal[1, 2]
     display_title: str
     alembic_argv: tuple[str, str, str, str, str]

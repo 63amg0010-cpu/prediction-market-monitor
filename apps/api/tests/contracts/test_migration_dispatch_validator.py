@@ -13,9 +13,11 @@ from scripts.migration_dispatch_validator import (
     RunCandidate,
     canonical_body,
     select_unique_run,
+    validate_current,
     validate_database_urls,
     validate_dispatch,
     validate_heads,
+    validate_result,
 )
 
 if TYPE_CHECKING:
@@ -37,9 +39,7 @@ def _encoded(value: JsonValue) -> str:
 
 
 def _database_url(driver: str, host: str, port: int) -> str:
-    return (
-        f"{driver}://user:{TEST_DATABASE_CREDENTIAL}@{host}:{port}/postgres"
-    )
+    return f"{driver}://user:{TEST_DATABASE_CREDENTIAL}@{host}:{port}/postgres"
 
 
 def _review_root() -> dict[str, JsonValue]:
@@ -160,6 +160,28 @@ def test_bootstrap_tuple_is_accepted_with_exact_quoted_revision() -> None:
 
 
 @pytest.mark.parametrize(
+    ("revision", "confirm", "current"),
+    [
+        ("20260803_0010a", "repair-release-foundation", "20260727_0010"),
+        ("20260803_0010b", "rebind-release-root", "20260803_0010a"),
+    ],
+)
+def test_release_corrections_are_attempt_one_and_exactly_sequenced(
+    revision: str,
+    confirm: str,
+    current: str,
+) -> None:
+    request = _bootstrap_request(revision=revision, confirm=confirm)
+
+    result = validate_dispatch(request)
+    validate_current(current, request)
+    validate_result(revision, request)
+
+    assert result.attempt == 1
+    assert result.alembic_argv[-2:] == ("upgrade", revision)
+
+
+@pytest.mark.parametrize(
     ("field", "value"),
     [
         ("revision", "head"),
@@ -235,11 +257,9 @@ def test_attempt_two_requires_matching_failed_safe_receipt() -> None:
 
 
 def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None:
-    # Given: the reviewed 0011 upgrade and 0011-to-0010 downgrade tuples.
+    # Given: the reviewed 0011 upgrade and 0011-to-0010b downgrade tuples.
     upgrade = _post_ledger_request("upgrade", "20260727_0011", "migrate-production")
-    downgrade = _post_ledger_request(
-        "downgrade", "20260803_0010a", "rollback-manifold"
-    )
+    downgrade = _post_ledger_request("downgrade", "20260803_0010b", "rollback-manifold")
 
     # When: both post-ledger requests are validated.
     upgrade_result = validate_dispatch(
@@ -253,7 +273,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
     assert upgrade_result.alembic_argv[-2:] == ("upgrade", "20260727_0011")
     assert downgrade_result.alembic_argv[-2:] == (
         "downgrade",
-        "20260803_0010a",
+        "20260803_0010b",
     )
 
 
@@ -274,7 +294,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
         ),
         _post_ledger_request(
             "downgrade",
-            "20260803_0010a",
+            "20260803_0010b",
             "rollback-manifold",
             review_root_sha256="c" * 64,
         ),
