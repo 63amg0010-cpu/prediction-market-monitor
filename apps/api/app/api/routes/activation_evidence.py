@@ -44,7 +44,8 @@ SELECT
     reservation.claimed_run_id
 FROM release_operation_reservations AS reservation
 WHERE reservation.receipt_sha256 = :reservation_receipt_sha256
-  AND reservation.revision = '20260727_0011'
+  AND reservation.workflow_file = 'activation-evidence.yml'
+  AND reservation.revision IS NULL
 """
 
 

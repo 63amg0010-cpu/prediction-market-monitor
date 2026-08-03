@@ -167,6 +167,7 @@ def test_bootstrap_tuple_is_accepted_with_exact_quoted_revision() -> None:
         ("20260803_0010c", "rebind-release-root", "20260803_0010b"),
         ("20260803_0010d", "rebind-release-root", "20260803_0010c"),
         ("20260803_0010e", "rebind-release-root", "20260803_0010d"),
+        ("20260803_0010f", "rebind-release-root", "20260803_0010e"),
     ],
 )
 def test_release_corrections_are_attempt_one_and_exactly_sequenced(
@@ -260,9 +261,9 @@ def test_attempt_two_requires_matching_failed_safe_receipt() -> None:
 
 
 def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None:
-    # Given: the reviewed 0011 upgrade and 0011-to-0010e downgrade tuples.
+    # Given: the reviewed 0011 upgrade and 0011-to-0010f downgrade tuples.
     upgrade = _post_ledger_request("upgrade", "20260727_0011", "migrate-production")
-    downgrade = _post_ledger_request("downgrade", "20260803_0010e", "rollback-manifold")
+    downgrade = _post_ledger_request("downgrade", "20260803_0010f", "rollback-manifold")
 
     # When: both post-ledger requests are validated.
     upgrade_result = validate_dispatch(
@@ -276,7 +277,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
     assert upgrade_result.alembic_argv[-2:] == ("upgrade", "20260727_0011")
     assert downgrade_result.alembic_argv[-2:] == (
         "downgrade",
-        "20260803_0010e",
+        "20260803_0010f",
     )
 
 
@@ -297,7 +298,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
         ),
         _post_ledger_request(
             "downgrade",
-            "20260803_0010e",
+            "20260803_0010f",
             "rollback-manifold",
             review_root_sha256="c" * 64,
         ),
