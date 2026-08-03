@@ -53,15 +53,16 @@ def _named_steps(job: dict[str, JsonValue]) -> dict[str, dict[str, JsonValue]]:
     }
 
 
-def test_collect_workflow_uses_minute_17_oidc_bounded_cli() -> None:
+def test_collect_workflow_is_manual_only_oidc_bounded_cli() -> None:
     # Given: the sole source-network collection workflow.
     workflow = _workflow("collect.yml")
     triggers = _mapping(workflow["on"])
     permissions = _mapping(workflow["permissions"])
     job = _job(workflow, "collect")
 
-    # When/Then: it runs every three hours with OIDC and a six-minute bound.
-    assert triggers["schedule"] == [{"cron": "17 */3 * * *"}]
+    # When/Then: it only runs after an explicit manual dispatch, with OIDC
+    # and a six-minute bound.
+    assert set(triggers) == {"workflow_dispatch"}
     assert permissions["id-token"] == "write"
     assert job["timeout-minutes"] == 6
     collect_step = next(
@@ -123,9 +124,7 @@ def test_verifier_has_exact_independent_public_schedule_and_manual_private_gate(
 
     # When/Then: verification has its own exact schedule and cannot be
     # substituted by the collector's three-hour scoped verification.
-    collect_schedule = _mapping(collect_workflow["on"])["schedule"]
-    assert isinstance(collect_schedule, list)
-    assert _mapping(collect_schedule[0]) == {"cron": "17 */3 * * *"}
+    assert set(_mapping(collect_workflow["on"])) == {"workflow_dispatch"}
     assert set(triggers) == {"schedule", "workflow_dispatch"}
     assert triggers["schedule"] == [{"cron": "*/15 * * * *"}]
     assert set(_mapping(workflow["jobs"])) == {"verify"}
@@ -424,15 +423,15 @@ def test_all_workflows_use_immutable_actions_and_exact_uv() -> None:
     assert rendered.count("version: 0.5.30") >= 4
 
 
-def test_private_scheduled_budget_is_ineligible_for_the_required_cadence() -> None:
-    # Given: the exact collection and verifier schedules in a 31-day month.
-    collect_minutes = _int(_job(_workflow("collect.yml"), "collect")["timeout-minutes"])
+def test_private_scheduled_budget_only_counts_the_verifier_cadence() -> None:
+    # Given: collection is manual-only and only verification remains scheduled.
+    assert set(_mapping(_workflow("collect.yml")["on"])) == {"workflow_dispatch"}
     verify_minutes = _int(_job(_workflow("verify.yml"), "verify")["timeout-minutes"])
 
-    # When/Then: the required cadence exceeds private GitHub Free minutes,
-    # so the public-repository job gate must remain part of the workflow.
-    monthly_minutes = (collect_minutes * 8 * 31) + (verify_minutes * 96 * 31)
-    assert monthly_minutes == 10416
+    # When/Then: the independent verifier is still protected by the public
+    # repository gate; manual collection contributes no scheduled minutes.
+    monthly_minutes = verify_minutes * 96 * 31
+    assert monthly_minutes == 8928
     assert monthly_minutes > 2000
     assert "github.event.repository.private == false" in str(
         _job(_workflow("verify.yml"), "verify")["if"]

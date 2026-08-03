@@ -47,7 +47,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-fresh-s
 
 ## 2. GitHub public/no-paid 경계
 
-Repository는 의도적으로 Public이어야 하고 standard `ubuntu-latest`만 사용합니다. Actions budget/spend cap은 paid usage를 만들 수 없도록 설정하고 larger runner를 만들지 않습니다. `collect`와 `verify` schedule은 staged activation이 끝날 때까지 실행하지 않습니다.
+Repository는 의도적으로 Public이어야 하고 standard `ubuntu-latest`만 사용합니다. Actions budget/spend cap은 paid usage를 만들 수 없도록 설정하고 larger runner를 만들지 않습니다. `collect`는 관리자 화면에서만 수동 실행하며 `verify` schedule은 staged activation이 끝날 때까지 실행하지 않습니다.
 
 다음 환경을 정확히 만듭니다.
 
@@ -177,7 +177,7 @@ API `/v1/health` must return HTTP 200 with `status: ok`, `db: ok`, and `X-Correl
 
 Enable protected-main schedules only after activation and smoke verification:
 
-- collect: `17 */3 * * *`
+- collect: 예약 없음(관리자 화면의 `지금 새 글 수집` 버튼으로만 실행)
 - verifier: `*/15 * * * *`
 
 ## 10. 30-day acceptance

@@ -184,11 +184,13 @@ def _assert_no_database_credential(workflow: dict[str, JsonValue]) -> None:
 
 
 def _assert_cadence_recording(
-    job: dict[str, JsonValue], *, kind: str, operation_name: str
+    job: dict[str, JsonValue], *, kind: str, operation_name: str, scheduled: bool = True
 ) -> None:
     steps = _steps(job)
     named = _named_steps(job)
-    resolve = named["Resolve exact cadence branch"]
+    resolve = named[
+        "Resolve exact cadence branch" if scheduled else "Resolve exact manual branch"
+    ]
     operation = named[operation_name]
     record = named["Record durable cadence attempt"]
     upload = named["Upload public cadence receipt"]
@@ -198,6 +200,8 @@ def _assert_cadence_recording(
     assert record["if"] == (
         "${{ always() && (github.event_name == 'schedule' "
         "|| inputs.mode == 'cadence-retry') }}"
+        if scheduled
+        else "${{ always() && inputs.mode == 'cadence-retry' }}"
     )
     assert upload["if"] == (
         "${{ always() && steps.cadence-record.outcome == 'success' }}"
@@ -205,7 +209,7 @@ def _assert_cadence_recording(
 
     resolve_command = str(resolve["run"])
     assert f"slot --kind {kind}" in resolve_command
-    assert 'mode="schedule"' in resolve_command
+    assert ('mode="schedule"' in resolve_command) is scheduled
     assert 'mode="retry"' in resolve_command
     assert 'mode="manual"' in resolve_command
     assert 'test "$INPUT_ATTEMPT" = "2"' in resolve_command
@@ -359,12 +363,12 @@ def test_ci_executes_shared_guarded_twenty_command_manifest() -> None:
     assert "Run web tests" not in named
 
 
-def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
+def test_collect_is_manual_only_and_protects_main_for_every_mode() -> None:
     workflow = _workflow("collect.yml")
     triggers = _mapping(workflow["on"])
     job = _job(workflow, "collect")
 
-    assert triggers["schedule"] == [{"cron": "17 */3 * * *"}]
+    assert set(triggers) == {"workflow_dispatch"}
     assert workflow["run-name"] == (
         "collect-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
         "-attempt-${{ inputs.attempt }}"
@@ -415,6 +419,7 @@ def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
         job,
         kind="collection",
         operation_name="Collect through the scoped API",
+        scheduled=False,
     )
 
 

@@ -8,7 +8,7 @@ This project is designed for Vercel Hobby, Supabase Free, and GitHub Actions fre
 
 | Provider | Role | Current limit decision |
 |---|---|---|
-| GitHub Actions | 3-hour collector and 15-minute independent verifier | Workflows are best effort. They must record observed timing; a scheduled event alone is not proof. |
+| GitHub Actions | Manual collector and 15-minute independent verifier | Collection runs only after an authenticated dashboard request. Verifier schedules are best effort and must record observed timing. |
 | Vercel Hobby | Stateless API/web and once-daily report cron | Hobby cron is daily only; it is not used for the 3-hour collector. |
 | Supabase Free | PostgreSQL control/data plane | Use internal 70% soft and 80% hard stop before quota exhaustion. |
 | Windows PC + Codex CLI | Local analysis worker only after proof | Current state is `blocked_capability`; no alternate paid/free model fallback. |
@@ -30,7 +30,7 @@ See `docs/evidence/provider-budget-proof.md` for the dated provider evidence. Re
 Workflow files:
 
 - `.github/workflows/ci.yml`: contracts/unit tests plus the exact `uv run --package monitor-api pytest apps/api/tests/integration/test_postgres_report_retention.py -q -rs` RP-07 retention-replay proof, then web checks/builds. RP-07 deliberately reports `SKIPPED [1] RP07_DATABASE_URL is required for real PostgreSQL proof` when no disposable direct PostgreSQL URL is supplied; that is a green gate for ordinary CI, not a claim of real-DB proof. Each isolated deployment matrix job then selects API or Web with `VERCEL_PROJECT_ID` and runs pinned `vercel@51.7.0` from the repository root with `pull -> build -> test .vercel/output -> deploy --prebuilt`.
-- `.github/workflows/collect.yml`: `17 */3 * * *`, 6-minute timeout, collector-only scoped API execution.
+- `.github/workflows/collect.yml`: schedule disabled; an authenticated dashboard action dispatches one bounded, collector-only run with a 6-minute timeout.
 - `.github/workflows/verify.yml`: independent `*/15 * * * *` verifier, 3-minute timeout, no source secrets. Scheduled jobs run only when `github.event.repository.private == false`.
 - `.github/workflows/migrate.yml`: manual production migration only when `confirm` is `migrate-production`.
 
@@ -55,7 +55,7 @@ The ordinary CI job intentionally does not receive `RP07_DATABASE_URL`: no datab
 
 GitHub documents standard GitHub-hosted runners as free for public repositories. The production cadence therefore requires a freshly verified public repository using `ubuntu-latest`; larger runners are not eligible for this rule. The same capture must prove paid/overage paths are disabled. Public-runner eligibility is only a cost input, not cadence evidence.
 
-The exact acceptance horizon is 30 days: 240 collection slots and 2,880 verifier slots. Quota projection separately enumerates every provider's real hourly/daily/weekly/billing-month window and every bounded initial/retry/manual/rollback attempt that overlaps it. A private or unknown-visibility repository cannot satisfy the no-paid scheduled cadence and remains `HOLD`; a one-off private manual authorization does not authorize schedules or Production acceptance.
+The previous 30-day cadence evidence remains historical and append-only. The current operating mode has no automatic collection slots: quota projection must count actual bounded manual attempts plus the independent verifier schedule. A manual collection request never authorizes a recurring collection schedule.
 
 Before enabling schedules, inspect repository visibility and Actions settings. Unknown or private visibility is fail-closed for the scheduled verifier. Do not remove the workflow visibility condition, enable larger runners, or add a paid scheduler as a fallback.
 

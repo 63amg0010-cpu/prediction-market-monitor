@@ -2,8 +2,6 @@ name: collect
 run-name: collect-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
 
 on:
-  schedule:
-    - cron: "17 */3 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -228,8 +226,8 @@ jobs:
             --scope-version "$MONITOR_SCOPE_VERSION" \
             --bindings-json-env MONITOR_SOURCE_BINDINGS_JSON \
             --json-out "$RUNNER_TEMP/cadence-operation-result.json"
-      - name: Resolve exact cadence branch
-        if: ${{ github.event_name == 'schedule' || !contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
+      - name: Resolve exact manual branch
+        if: ${{ !contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
         shell: bash
         env:
           INPUT_MODE: ${{ inputs.mode }}
@@ -238,12 +236,7 @@ jobs:
           INPUT_ATTEMPT: ${{ inputs.attempt }}
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
-            slot_key="$(uv run --package monitor-api python apps/api/scripts/release_cadence_workflow_client.py slot --kind collection)"
-            mode="schedule"
-            cadence_attempt="1"
-            failed_attempt="none"
-          elif [ "$INPUT_MODE" = "cadence-retry" ]; then
+          if [ "$INPUT_MODE" = "cadence-retry" ]; then
             test "$INPUT_ATTEMPT" = "2"
             [[ "$INPUT_SLOT_KEY" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:00Z$ ]]
             [[ "$INPUT_FAILED_ATTEMPT" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]
@@ -264,12 +257,12 @@ jobs:
             echo "CADENCE_FAILED_ATTEMPT=$failed_attempt"
           } >> "$GITHUB_ENV"
       - name: Collect through the scoped API
-        if: ${{ github.event_name == 'schedule' || !contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
+        if: ${{ !contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
         working-directory: apps/api
         run: uv run --package monitor-api python -m app.collection.cli collect
         env:
           MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
-          MONITOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'scheduled' }}
+          MONITOR_MODE: ${{ inputs.mode }}
           MONITOR_SCOPE_VERSION: ${{ vars.MONITOR_SCOPE_VERSION }}
           MONITOR_DEPLOYMENT_ACTIVATION_AT: ${{ inputs.mode == 'direct-smoke' && inputs.smoke_activation_at || vars.MONITOR_DEPLOYMENT_ACTIVATION_AT }}
           MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
@@ -310,7 +303,7 @@ jobs:
           if-no-files-found: error
       - name: Record durable cadence attempt
         id: cadence-record
-        if: ${{ always() && (github.event_name == 'schedule' || inputs.mode == 'cadence-retry') }}
+        if: ${{ always() && inputs.mode == 'cadence-retry' }}
         shell: bash
         env:
           CADENCE_EPOCH_ID: ${{ vars.CADENCE_EPOCH_ID }}
