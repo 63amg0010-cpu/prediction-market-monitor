@@ -46,6 +46,10 @@ on:
         description: Failed attempt-1 UUID authorizing an explicit cadence retry
         required: false
         type: string
+      smoke_activation_at:
+        description: UTC activation timestamp used only by direct-smoke
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -61,6 +65,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 6
     environment: production-collector
+    env:
+      PYTHONPATH: apps/api
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -95,7 +101,7 @@ jobs:
           test "$ACTIVATION_NONCE" != "$DISPATCH_NONCE"
           [ "$ATTEMPT" = "1" ] || [ "$ATTEMPT" = "2" ]
       - name: Claim durable workflow reservation
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode != 'direct-smoke' }}
         shell: bash
         env:
           ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
@@ -194,7 +200,7 @@ jobs:
             "$RUNNER_TEMP/workflow-claim-public-receipt.json" > /dev/null
           rm -f "$RUNNER_TEMP/workflow-claim-request.json"
       - name: Upload redacted workflow receipt
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode != 'direct-smoke' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: collect-claim-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
@@ -265,7 +271,7 @@ jobs:
           MONITOR_API_URL: ${{ vars.MONITOR_API_URL }}
           MONITOR_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'scheduled' }}
           MONITOR_SCOPE_VERSION: ${{ vars.MONITOR_SCOPE_VERSION }}
-          MONITOR_DEPLOYMENT_ACTIVATION_AT: ${{ vars.MONITOR_DEPLOYMENT_ACTIVATION_AT }}
+          MONITOR_DEPLOYMENT_ACTIVATION_AT: ${{ inputs.mode == 'direct-smoke' && inputs.smoke_activation_at || vars.MONITOR_DEPLOYMENT_ACTIVATION_AT }}
           MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
           MONITOR_COMMAND_ID: ${{ inputs.command_id }}
           MONITOR_CADENCE_RESULT_PATH: ${{ runner.temp }}/cadence-operation-result.json
@@ -275,7 +281,7 @@ jobs:
           REDDIT_OAUTH_ACCESS_TOKEN: ${{ secrets.REDDIT_OAUTH_ACCESS_TOKEN }}
           REDDIT_USER_AGENT: ${{ vars.REDDIT_USER_AGENT }}
       - name: Complete durable collection operation
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode != 'direct-smoke' }}
         run: |
           uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
             --api-url "${{ vars.MONITOR_API_URL }}" \
@@ -292,7 +298,7 @@ jobs:
             --attempt "${{ inputs.attempt }}" \
             --json-out "$RUNNER_TEMP/operation.json"
       - name: Upload terminal collection operation receipt
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode != 'direct-smoke' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: collect-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}

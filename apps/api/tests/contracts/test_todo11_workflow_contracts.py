@@ -102,10 +102,14 @@ def _assert_manual_validation(job: dict[str, JsonValue]) -> None:
 
 
 def _assert_claim_contract(
-    job: dict[str, JsonValue], *, expected_environment: str, expected_workflow: str
+    job: dict[str, JsonValue],
+    *,
+    expected_environment: str,
+    expected_workflow: str,
+    expected_condition: str = "${{ github.event_name == 'workflow_dispatch' }}",
 ) -> None:
     step = _named_steps(job)["Claim durable workflow reservation"]
-    assert step["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    assert step["if"] == expected_condition
     command = str(step["run"])
     assert "/internal/release/workflow-dispatch-claim" in command
     assert "audience=monitor-control" in command
@@ -128,11 +132,15 @@ def _assert_claim_contract(
 
 
 def _assert_attempt_artifact(
-    job: dict[str, JsonValue], *, expected_name: str, expected_claim_name: str
+    job: dict[str, JsonValue],
+    *,
+    expected_name: str,
+    expected_claim_name: str,
+    expected_condition: str = "${{ github.event_name == 'workflow_dispatch' }}",
 ) -> None:
     named = _named_steps(job)
     claim = named["Upload redacted workflow receipt"]
-    assert claim["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    assert claim["if"] == expected_condition
     claim_options = _mapping(claim["with"])
     assert claim_options["name"] == expected_claim_name
     assert claim_options["retention-days"] == 1
@@ -140,7 +148,7 @@ def _assert_attempt_artifact(
     terminal = next(
         step for name, step in named.items() if name.startswith("Upload terminal ")
     )
-    assert terminal["if"] == "${{ github.event_name == 'workflow_dispatch' }}"
+    assert terminal["if"] == expected_condition
     terminal_options = _mapping(terminal["with"])
     assert terminal_options["name"] == expected_name
     assert terminal_options["retention-days"] == 1
@@ -366,12 +374,27 @@ def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
     mode = _mapping(_dispatch_inputs(workflow)["mode"])
     assert mode["required"] is True
     assert mode["type"] == "string"
+    smoke = _mapping(_dispatch_inputs(workflow)["smoke_activation_at"])
+    assert smoke["required"] is False
+    assert smoke["type"] == "string"
+    assert _mapping(job["env"])["PYTHONPATH"] == "apps/api"
+    collection_environment = _mapping(
+        _named_steps(job)["Collect through the scoped API"]["env"]
+    )
+    assert collection_environment["MONITOR_DEPLOYMENT_ACTIVATION_AT"] == (
+        "${{ inputs.mode == 'direct-smoke' && inputs.smoke_activation_at "
+        "|| vars.MONITOR_DEPLOYMENT_ACTIVATION_AT }}"
+    )
     _assert_immutable_checkout(job)
     _assert_manual_validation(job)
     _assert_claim_contract(
         job,
         expected_environment='"production-collector"',
         expected_workflow="collect.yml",
+        expected_condition=(
+            "${{ github.event_name == 'workflow_dispatch' "
+            "&& inputs.mode != 'direct-smoke' }}"
+        ),
     )
     _assert_attempt_artifact(
         job,
@@ -382,6 +405,10 @@ def test_collect_preserves_schedule_and_protects_main_for_every_mode() -> None:
         expected_claim_name=(
             "collect-claim-${{ inputs.mode }}-${{ inputs.dispatch_nonce }}"
             "-attempt-${{ inputs.attempt }}"
+        ),
+        expected_condition=(
+            "${{ github.event_name == 'workflow_dispatch' "
+            "&& inputs.mode != 'direct-smoke' }}"
         ),
     )
     _assert_cadence_recording(

@@ -32,6 +32,8 @@ from scripts.source_bindings_contracts import (
 from scripts.source_bindings_contracts import (
     GitHub as RuntimeGitHub,
 )
+from scripts.source_bindings_github import set_secret as runtime_set_secret
+from scripts.source_bindings_github import set_variable as runtime_set_variable
 from scripts.source_bindings_runtime import capture, validate_collection_receipt
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -84,8 +86,6 @@ def test_apply_writes_exact_target_and_public_commit_marker_last() -> None:
             "63amg0010-cpu/prediction-market-monitor",
             "--env",
             "production-collector",
-            "--body",
-            "-",
         ),
         (
             "gh",
@@ -96,8 +96,6 @@ def test_apply_writes_exact_target_and_public_commit_marker_last() -> None:
             "63amg0010-cpu/prediction-market-monitor",
             "--env",
             "production-collector",
-            "--body",
-            "-",
         ),
         (
             "gh",
@@ -108,8 +106,6 @@ def test_apply_writes_exact_target_and_public_commit_marker_last() -> None:
             "63amg0010-cpu/prediction-market-monitor",
             "--env",
             "production-collector",
-            "--body",
-            "-",
         ),
     ]
     assert [call.stdin for call in github.calls] == [
@@ -118,6 +114,23 @@ def test_apply_writes_exact_target_and_public_commit_marker_last() -> None:
         "phase1-reviewed-v1+manifold-v1",
     ]
     assert receipt.state == "binding_committed"
+
+
+def test_runtime_github_adapter_reads_values_from_stdin() -> None:
+    github = RecordingGitHub()
+    runtime = cast("RuntimeGitHub", cast("object", github))
+
+    runtime_set_secret(runtime, '[{"platform":"manifold"}]')
+    runtime_set_variable(runtime, "MONITOR_SCOPE_VERSION", "scope-v1")
+
+    assert [call.argv[-2:] for call in github.calls] == [
+        ("--env", "production-collector"),
+        ("--env", "production-collector"),
+    ]
+    assert [call.stdin for call in github.calls] == [
+        '[{"platform":"manifold"}]',
+        "scope-v1",
+    ]
 
 
 def test_lost_receipt_rereads_marker_without_rewriting_binding() -> None:
