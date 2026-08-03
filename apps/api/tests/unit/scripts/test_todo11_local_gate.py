@@ -757,6 +757,12 @@ def test_command_nine_gets_valid_fresh_0011_evidence_only_for_its_child(
                     validate=True,
                 )
             )
+            dispatch_rebind_root = ReviewRoot.model_validate_json(
+                base64.b64decode(
+                    env["MIGRATION_DISPATCH_REBIND_REVIEW_ROOT_B64"],
+                    validate=True,
+                )
+            )
             assert rebind_root.reviewed_sha == correction_root.reviewed_sha
             assert (
                 rebind_root.approved_plan_sha256 == correction_root.approved_plan_sha256
@@ -767,6 +773,20 @@ def test_command_nine_gets_valid_fresh_0011_evidence_only_for_its_child(
             )
             assert rebind_root.activation_nonce != correction_root.activation_nonce
             assert rebind_root.approval_round_id != correction_root.approval_round_id
+            assert dispatch_rebind_root.reviewed_sha == correction_root.reviewed_sha
+            assert (
+                dispatch_rebind_root.approved_plan_sha256
+                == correction_root.approved_plan_sha256
+            )
+            assert (
+                dispatch_rebind_root.protected_identity_hashes
+                == correction_root.protected_identity_hashes
+            )
+            assert dispatch_rebind_root.activation_nonce != rebind_root.activation_nonce
+            assert (
+                dispatch_rebind_root.approval_round_id
+                != rebind_root.approval_round_id
+            )
             with monkeypatch.context() as context:
                 context.setenv(attestation_env, env[attestation_env])
                 context.setenv(receipt_env, env[receipt_env])

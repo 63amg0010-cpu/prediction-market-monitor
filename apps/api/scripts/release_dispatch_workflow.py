@@ -5,16 +5,15 @@ from __future__ import annotations
 from typing import cast
 
 from scripts.release_dispatch_contracts import (
+    SHA256_RE,
     ChildRunner,
     HoldError,
     JsonObject,
     argv_sha256,
-    canonical_bytes,
     copied_chain_fields,
     hold,
     load_canonical,
     run_once,
-    sha256_hex,
     validate_common,
 )
 
@@ -107,7 +106,7 @@ def dispatch_workflow(  # noqa: PLR0913
         or reservation.get("attempt") != attempt
         or reservation.get("dispatch_nonce") != dispatch_nonce
         or reservation.get("display_title") != title
-        or reservation.get("workflow_file") != workflow["workflow"]
+        or reservation.get("workflow") != workflow["workflow"]
     ):
         hold("reservation_dispatch_binding_mismatch")
     operation_inputs = workflow["operation_inputs"]
@@ -117,7 +116,11 @@ def dispatch_workflow(  # noqa: PLR0913
         (str(key), _render(value, values))
         for key, value in operation_inputs.items()
     ]
-    reservation_sha = sha256_hex(canonical_bytes(reservation))
+    reservation_sha = reservation.get("receipt_sha256")
+    if not isinstance(reservation_sha, str) or SHA256_RE.fullmatch(
+        reservation_sha
+    ) is None:
+        hold("reservation_receipt_sha256_invalid")
     inputs: list[tuple[str, object]] = [
         *rendered,
         ("attempt", attempt),

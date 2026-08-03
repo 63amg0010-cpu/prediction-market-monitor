@@ -5,7 +5,6 @@ from __future__ import annotations
 from scripts.release_dispatch_contracts import (
     ChildRunner,
     JsonObject,
-    canonical_bytes,
     hold,
     load_canonical,
     run_once,
@@ -34,7 +33,9 @@ def verify_receipt(  # noqa: PLR0913
         expected_plan_sha256=expected_plan_sha256,
         activation_nonce=activation_nonce,
     )
-    reservation_sha = sha256_hex(canonical_bytes(reservation))
+    reservation_sha = reservation.get("receipt_sha256")
+    if not isinstance(reservation_sha, str):
+        hold("reservation_receipt_sha256_invalid")
     accepted = operation.get("accepted")
     terminal = operation.get("terminal_for_attempt")
     retry = operation.get("retry_permitted")

@@ -243,6 +243,7 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
     correction_export = str(named_steps["Export canonical correction receipt"]["run"])
     assert "release-correction-0010a" in correction_export
     assert "release-correction-0010b" in correction_export
+    assert "release-correction-0010c" in correction_export
     assert "--command=" not in correction_export
     assert "Encrypt and decrypt-test pre-migration backup" in named_steps
     assert "Upload encrypted recovery artifact" in named_steps

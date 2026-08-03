@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 import anyio
@@ -152,9 +153,68 @@ def run_dispatch_workflow(args: argparse.Namespace) -> int:
     return 0
 
 
+def _claimed_reservation(
+    args: argparse.Namespace,
+    reservation: dict[str, object],
+) -> tuple[str, int]:
+    async def snapshot() -> tuple[str, int]:
+        url = os.environ.get(args.database_url_env)
+        if not url:
+            message = "database_url_environment_empty"
+            raise ValueError(message)
+        receipt_sha256 = reservation.get("receipt_sha256")
+        if not isinstance(receipt_sha256, str):
+            message = "reservation_receipt_sha256_invalid"
+            raise TypeError(message)
+        engine = create_async_engine(url)
+        try:
+            async with engine.connect() as connection:
+                row = (
+                    await connection.execute(
+                        text(
+                            """
+                            SELECT repository, git_ref, workflow_file,
+                                   display_title, head_sha, activation_nonce,
+                                   dispatch_nonce, attempt, selection_floor_at,
+                                   claimed_run_id
+                            FROM release_operation_reservations
+                            WHERE receipt_sha256 = :receipt_sha256
+                            """
+                        ),
+                        {"receipt_sha256": receipt_sha256},
+                    )
+                ).mappings().one_or_none()
+        finally:
+            await engine.dispose()
+        if row is None:
+            message = "reservation_not_found"
+            raise ValueError(message)
+        expected = {
+            "repository": args.repository,
+            "git_ref": "refs/heads/main",
+            "workflow_file": args.workflow,
+            "display_title": args.display_title,
+            "head_sha": args.expected_sha,
+            "activation_nonce": args.activation_nonce,
+            "dispatch_nonce": args.dispatch_nonce,
+            "attempt": args.attempt,
+        }
+        if any(str(row[key]) != str(value) for key, value in expected.items()):
+            message = "reservation_selection_binding_mismatch"
+            raise ValueError(message)
+        floor = row["selection_floor_at"]
+        claimed = row["claimed_run_id"]
+        if not isinstance(floor, datetime) or not isinstance(claimed, int):
+            message = "reservation_run_not_claimed"
+            raise TypeError(message)
+        return floor.isoformat(), claimed
+
+    return anyio.run(snapshot)
+
+
 def run_select(args: argparse.Namespace) -> int:
     reservation = read_document(args.reservation)
-    claimed = reservation.get("claimed_run_id")
+    selection_floor_at, claimed_run_id = _claimed_reservation(args, reservation)
     identity = RunIdentity(
         repository=args.repository,
         workflow=args.workflow,
@@ -163,8 +223,8 @@ def run_select(args: argparse.Namespace) -> int:
         activation_nonce=args.activation_nonce,
         dispatch_nonce=args.dispatch_nonce,
         attempt=args.attempt,
-        selection_floor_at=str(reservation.get("selection_floor_at", "")),
-        claimed_run_id=claimed if isinstance(claimed, int) else None,
+        selection_floor_at=selection_floor_at,
+        claimed_run_id=claimed_run_id,
     )
     receipt = select_run(
         DispatchSubprocessRunner(args.github_token_env),
