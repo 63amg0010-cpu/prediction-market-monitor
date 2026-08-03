@@ -15,7 +15,7 @@ from app.collection.skip_decision_proofs import (
 )
 from app.db.auth_models import CommunitySource, SourceAuthorizationDecision
 from app.db.operations_models import BudgetDecision, ProviderBudgetRecord
-from app.db.run_models import CollectionRun
+from app.db.run_models import CollectionRun, SourceCheckpoint
 from app.db.scheduler_models import CollectionCommand
 from app.domain.enums import (
     AuthorizationStatus,
@@ -36,6 +36,7 @@ RUN_ID = UUID("9a7a5116-4f24-4f80-98c7-45bb449d3c47")
 COMMAND_ID = UUID("6cb3de1a-97d0-4564-8d7b-4c78180e4abd")
 SOURCE_ID = UUID("1832bb2a-f81a-479e-a302-9f039b6740c8")
 AUTHORIZATION_ID = UUID("65abffb2-1609-4800-9961-2369c84cb536")
+CURRENT_AUTHORIZATION_ID = UUID("cbb4360b-0f45-4515-b895-484598d14278")
 BUDGET_RECORD_ID = UUID("c8460db9-071a-4e04-b1c8-41061eb82e48")
 BUDGET_DECISION_ID = UUID("bcbd13e7-60f1-40eb-8c4c-6440809b568c")
 
@@ -202,6 +203,82 @@ async def test_finalizer_rejects_stale_or_wrong_scope_current_authorization(
             _ = await load_locked_completion_context(session, COMMAND_ID, 1)
 
     # Then: it fails closed before the completion mutation can be planned.
+    assert captured.value.code is CollectionErrorCode.SOURCE_AUTHORIZATION_INACTIVE
+    assert captured.value.status_code == 403
+    assert responses == []
+
+
+@pytest.mark.asyncio
+async def test_recovery_accepts_claim_that_was_valid_before_pointer_rotation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a stuck run was legitimately claimed before an append-only rotation.
+    source = _source()
+    source.active_authorization_id = CURRENT_AUTHORIZATION_ID
+    checkpoint = SourceCheckpoint(
+        id=UUID("907d63c8-8d96-46fe-b6fa-49bff421c5d5"),
+        source_id=SOURCE_ID,
+        scope_version="scope-v1",
+        cursor=None,
+        revision=0,
+        updated_at=NOW,
+    )
+    responses: list[object] = [
+        _ScalarResult(CollectionCommand(id=COMMAND_ID)),
+        _ScalarResult(NOW),
+        _RowsResult((_run(),)),
+        _ScalarResult(source),
+        _ScalarResult(_authorization()),
+        _ScalarResult(checkpoint),
+        _RowsResult[object](()),
+        _RowsResult[object](()),
+    ]
+
+    async def execute(_statement: Executable) -> object:
+        return responses.pop(0)
+
+    # When: stale-run recovery validates the immutable claim-time decision.
+    async with AsyncSession() as session:
+        monkeypatch.setattr(session, "execute", execute)
+        locked = await load_locked_completion_context(
+            session,
+            COMMAND_ID,
+            1,
+            allow_retired_claim=True,
+        )
+
+    # Then: recovery may terminally reconcile without permitting another fetch.
+    assert locked.domain.runs[0].run.authorization_decision_id == AUTHORIZATION_ID
+    assert responses == []
+
+
+@pytest.mark.asyncio
+async def test_recovery_rejects_retired_claim_invalid_at_run_start(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _source()
+    source.active_authorization_id = CURRENT_AUTHORIZATION_ID
+    responses: list[object] = [
+        _ScalarResult(CollectionCommand(id=COMMAND_ID)),
+        _ScalarResult(NOW),
+        _RowsResult((_run(),)),
+        _ScalarResult(source),
+        _ScalarResult(_authorization(expired=True)),
+    ]
+
+    async def execute(_statement: Executable) -> object:
+        return responses.pop(0)
+
+    async with AsyncSession() as session:
+        monkeypatch.setattr(session, "execute", execute)
+        with pytest.raises(CollectionError) as captured:
+            _ = await load_locked_completion_context(
+                session,
+                COMMAND_ID,
+                1,
+                allow_retired_claim=True,
+            )
+
     assert captured.value.code is CollectionErrorCode.SOURCE_AUTHORIZATION_INACTIVE
     assert captured.value.status_code == 403
     assert responses == []

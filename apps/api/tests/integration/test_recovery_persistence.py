@@ -190,8 +190,13 @@ async def _run_recovery(
         return responses.pop(0)
 
     async def load(
-        _session: AsyncSession, _command_id: UUID, _attempt: int
+        _session: AsyncSession,
+        _command_id: UUID,
+        _attempt: int,
+        *,
+        allow_retired_claim: bool = False,
     ) -> LockedCompletionContext:
+        assert allow_retired_claim is True
         return locked
 
     async def persist(

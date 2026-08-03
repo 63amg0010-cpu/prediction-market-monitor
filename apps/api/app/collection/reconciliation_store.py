@@ -100,7 +100,12 @@ async def _reconcile_command(
         CommandStatus.STALE_ABANDONED,
     )
     if recoverable_run and run_rows:
-        locked = await load_locked_completion_context(session, row.id, row.attempt)
+        locked = await load_locked_completion_context(
+            session,
+            row.id,
+            row.attempt,
+            allow_retired_claim=True,
+        )
         plan = prepare_stale_recovery(locked.domain, retry_jitter_key)
         if plan is not None:
             _ = await persist_completion_plan(

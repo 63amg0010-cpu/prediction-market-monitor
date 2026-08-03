@@ -50,6 +50,8 @@ async def load_locked_completion_context(
     session: AsyncSession,
     command_id: UUID,
     attempt: int,
+    *,
+    allow_retired_claim: bool = False,
 ) -> LockedCompletionContext:
     """Lock a command, its exact attempt runs, and every source checkpoint."""
     command_row = (
@@ -81,7 +83,12 @@ async def load_locked_completion_context(
     checkpoints: list[SourceCheckpoint] = []
     facts: list[RunCompletionFacts] = []
     for run_row in run_rows:
-        await _require_completion_authorization(session, run_row, db_now)
+        await _require_completion_authorization(
+            session,
+            run_row,
+            db_now,
+            allow_retired_claim=allow_retired_claim,
+        )
         checkpoint = (
             await session.execute(
                 select(SourceCheckpoint)
@@ -184,6 +191,8 @@ async def _require_completion_authorization(
     session: AsyncSession,
     run: CollectionRun,
     now: datetime,
+    *,
+    allow_retired_claim: bool,
 ) -> None:
     source = (
         await session.execute(
@@ -192,11 +201,16 @@ async def _require_completion_authorization(
             .with_for_update()
         )
     ).scalar_one()
+    authorization_id = (
+        run.authorization_decision_id
+        if allow_retired_claim and run.skip_authorization_decision_id is None
+        else source.active_authorization_id
+    )
     decision = (
         await session.execute(
             select(SourceAuthorizationDecision)
             .where(
-                SourceAuthorizationDecision.id == source.active_authorization_id,
+                SourceAuthorizationDecision.id == authorization_id,
                 SourceAuthorizationDecision.source_id == source.id,
             )
             .with_for_update()
@@ -219,6 +233,24 @@ async def _require_completion_authorization(
         return
     if decision is None or decision.id != run.authorization_decision_id:
         raise CollectionError(CollectionErrorCode.SOURCE_AUTHORIZATION_INACTIVE, 403)
+    if allow_retired_claim and source.active_authorization_id != decision.id:
+        claimed_at = run.started_at
+        valid_retired_claim = (
+            source.enabled
+            and source.scope_version == run.scope_version
+            and claimed_at is not None
+            and decision.status is AuthorizationStatus.APPROVED
+            and decision.effective_at <= claimed_at
+            and decision.expires_at is not None
+            and decision.expires_at > claimed_at
+            and (decision.revoked_at is None or decision.revoked_at > claimed_at)
+        )
+        if not valid_retired_claim:
+            raise CollectionError(
+                CollectionErrorCode.SOURCE_AUTHORIZATION_INACTIVE,
+                403,
+            )
+        return
     _ = require_active_authorization(
         AuthorizationSnapshot(
             decision.id,
