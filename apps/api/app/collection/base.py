@@ -46,7 +46,7 @@ class CollectionErrorCode(StrEnum):
     RUN_SET_MISMATCH = "run_set_mismatch"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class CollectionError(Exception):
     """A typed collection failure safe for boundary translation."""
 

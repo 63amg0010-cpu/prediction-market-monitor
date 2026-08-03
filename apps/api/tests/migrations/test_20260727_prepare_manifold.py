@@ -17,10 +17,10 @@ def test_0011_follows_0010h_without_branching() -> None:
     # When: the activation-preparation revision is resolved.
     revision = script.get_revision(REVISION)
 
-    # Then: 0011 is the sole head and preserves the 0010 ledger schema.
+    # Then: 0011 preserves the 0010 ledger schema beneath the repair head.
     assert revision is not None
     assert revision.down_revision == "20260803_0010h"
-    assert script.get_heads() == [REVISION]
+    assert script.get_heads() == ["20260803_0012"]
 
 
 def test_0011_renders_append_only_activation_schema_and_inert_source() -> None:
