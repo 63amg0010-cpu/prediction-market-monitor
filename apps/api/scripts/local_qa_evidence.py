@@ -314,6 +314,16 @@ def _bootstrap_environment(
         protected,
         "oidc-rebind",
     )
+    activation_rebind_nonce = str(
+        uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:activation-rebind")
+    )
+    activation_rebind_root, activation_rebind_no_spend = _release_pair(
+        reviewed_sha,
+        plan_sha,
+        activation_rebind_nonce,
+        protected,
+        "activation-rebind",
+    )
     return {
         "MIGRATION_REVIEW_ROOT_B64": base64.b64encode(initial_root).decode(),
         "MIGRATION_NO_SPEND_RECEIPT_B64": base64.b64encode(initial_no_spend).decode(),
@@ -415,6 +425,25 @@ def _bootstrap_environment(
             uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:oidc-rebind-dispatch")
         ),
         "MIGRATION_OIDC_REBIND_ATTEMPT": "1",
+        "MIGRATION_ACTIVATION_REBIND_REVIEW_ROOT_B64": base64.b64encode(
+            activation_rebind_root
+        ).decode(),
+        "MIGRATION_ACTIVATION_REBIND_REVIEW_ROOT_SHA256": hashlib.sha256(
+            activation_rebind_root
+        ).hexdigest(),
+        "MIGRATION_ACTIVATION_REBIND_NO_SPEND_RECEIPT_B64": base64.b64encode(
+            activation_rebind_no_spend
+        ).decode(),
+        "MIGRATION_ACTIVATION_REBIND_NO_SPEND_RECEIPT_SHA256": hashlib.sha256(
+            activation_rebind_no_spend
+        ).hexdigest(),
+        "MIGRATION_ACTIVATION_REBIND_EXPECTED_COMMIT_SHA": reviewed_sha,
+        "MIGRATION_ACTIVATION_REBIND_EXPECTED_PLAN_SHA256": plan_sha,
+        "MIGRATION_ACTIVATION_REBIND_ACTIVATION_NONCE": activation_rebind_nonce,
+        "MIGRATION_ACTIVATION_REBIND_DISPATCH_NONCE": str(
+            uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:activation-rebind-dispatch")
+        ),
+        "MIGRATION_ACTIVATION_REBIND_ATTEMPT": "1",
         "GITHUB_RUN_ID": "1",
         "RUNNER_TEMP": runner_temp,
     }

@@ -187,6 +187,16 @@ def test_activation_evidence_verifier_declares_read_only_repeatable_read() -> No
     )
 
 
+def test_activation_evidence_reads_the_pre_0011_reservation_shape() -> None:
+    # Given: activation evidence is reserved before the 0011 migration exists.
+    normalized = " ".join(RESERVATION_READ_SQL.split())
+
+    # Then: the read accepts only the activation workflow's revisionless reservation.
+    assert "workflow_file = 'activation-evidence.yml'" in normalized
+    assert "revision IS NULL" in normalized
+    assert "revision = '20260727_0011'" not in normalized
+
+
 @pytest.mark.asyncio
 async def test_raw_github_oidc_token_is_authorized_directly() -> None:
     # Given: an exact activation-workflow claim set and a raw GitHub JWT.

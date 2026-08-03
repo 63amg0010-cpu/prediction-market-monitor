@@ -246,6 +246,7 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
     assert "release-correction-0010c" in correction_export
     assert "release-correction-0010d" in correction_export
     assert "release-correction-0010e" in correction_export
+    assert "release-correction-0010f" in correction_export
     assert "--command=" not in correction_export
     assert "Encrypt and decrypt-test pre-migration backup" in named_steps
     assert "Upload encrypted recovery artifact" in named_steps
