@@ -95,6 +95,22 @@ def test_collect_workflow_never_executes_independent_verifier() -> None:
     assert "VERIFY_WRITE" not in rendered
 
 
+def test_binding_control_modes_are_zero_provider_and_upload_evidence() -> None:
+    workflow = _workflow("collect.yml")
+    job = _job(workflow, "collect")
+    named = _named_steps(job)
+    zero = named["Create zero-provider binding evidence"]
+    collect = named["Collect through the scoped API"]
+    upload = named["Upload terminal collection operation receipt"]
+
+    assert "zero_provider_binding_evidence.py" in str(zero["run"])
+    assert "binding-prestate" in str(zero["if"])
+    assert "binding-handshake" in str(zero["if"])
+    assert "binding-restore-verify" in str(zero["if"])
+    assert "binding-prestate" in str(collect["if"])
+    assert "cadence-operation-result.json" in str(_mapping(upload["with"])["path"])
+
+
 def test_verifier_has_exact_independent_public_schedule_and_manual_private_gate() -> (
     None
 ):
@@ -248,6 +264,7 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
     assert "release-correction-0010e" in correction_export
     assert "release-correction-0010f" in correction_export
     assert "release-correction-0010g" in correction_export
+    assert "release-correction-0010h" in correction_export
     assert "--command=" not in correction_export
     assert "Encrypt and decrypt-test pre-migration backup" in named_steps
     assert "Upload encrypted recovery artifact" in named_steps

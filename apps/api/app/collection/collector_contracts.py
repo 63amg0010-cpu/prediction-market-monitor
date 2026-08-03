@@ -56,6 +56,7 @@ class SourceExecution:
     preflight: Callable[[], PreflightResult]
     fetch_page: Callable[[PageCursor], Awaitable[AdapterPage]]
     authorization: SourceAuthorizationDecision | None = None
+    bind_authorization: Callable[[SourceAuthorizationDecision], None] | None = None
 
 
 @dataclass(frozen=True, slots=True)

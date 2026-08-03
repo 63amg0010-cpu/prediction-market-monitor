@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import UUID  # noqa: TC003
 
@@ -48,11 +49,43 @@ if TYPE_CHECKING:
 
 class _SourceBinding(BaseModel):
     source_id: UUID
-    authorization: SourceAuthorizationDecision
+    platform: SourcePlatform | None = None
+    authorization: SourceAuthorizationDecision | None = None
+
+    def resolved_platform(self) -> SourcePlatform:
+        if self.platform is not None:
+            if (
+                self.authorization is not None
+                and self.authorization.source is not self.platform
+            ):
+                error_code = "source_binding_platform_mismatch"
+                raise ValueError(error_code)
+            return self.platform
+        if self.authorization is not None:
+            return self.authorization.source
+        error_code = "source_binding_platform_missing"
+        raise ValueError(error_code)
 
 
 class _SourceBindings(RootModel[tuple[_SourceBinding, ...]]):
     pass
+
+
+@dataclass(slots=True)
+class _AuthorizationSlot:
+    value: SourceAuthorizationDecision | None
+    clock: Callable[[], datetime]
+    enabled_finance_sources: frozenset[SourcePlatform]
+
+    def context(self) -> PreflightContext:
+        return PreflightContext(
+            authorization=self.value,
+            checked_at=self.clock(),
+            enabled_finance_sources=self.enabled_finance_sources,
+        )
+
+    def bind(self, authorization: SourceAuthorizationDecision) -> None:
+        self.value = authorization
 
 
 async def source_executions(
@@ -70,20 +103,20 @@ async def source_executions(
         error_code = "source_binding_set_mismatch"
         raise CliError(error_code)
     finance_sources = frozenset(
-        binding.authorization.source
+        binding.resolved_platform()
         for binding in bindings
-        if binding.authorization.source
+        if binding.resolved_platform()
         in {SourcePlatform.NAVER_FINANCE, SourcePlatform.TOSS_SECURITIES}
     )
     executions: list[SourceExecution] = []
     for source_id in configured_ids:
         binding = by_id[source_id]
-        context = PreflightContext(
-            authorization=binding.authorization,
-            checked_at=clock(),
-            enabled_finance_sources=finance_sources,
+        slot = _AuthorizationSlot(
+            binding.authorization,
+            clock,
+            finance_sources,
         )
-        platform = binding.authorization.source
+        platform = binding.resolved_platform()
         if platform is SourcePlatform.REDDIT:
             http_client = await stack.enter_async_context(create_reddit_http_client())
             credentials = RedditOAuthCredentials(
@@ -96,7 +129,7 @@ async def source_executions(
                 _reddit_execution(
                     source_id,
                     RedditAdapter(http_client),
-                    context,
+                    slot,
                     credentials,
                 )
             )
@@ -109,7 +142,7 @@ async def source_executions(
                 _dcinside_execution(
                     source_id,
                     DCInsideAdapter(http_client),
-                    context,
+                    slot,
                     required(environment, "DCINSIDE_USER_AGENT"),
                 )
             )
@@ -122,12 +155,12 @@ async def source_executions(
                 _manifold_execution(
                     source_id,
                     ManifoldAdapter(http_client),
-                    context,
+                    slot,
                 )
             )
             continue
         executions.append(
-            _blocked_execution(source_id, _blocked_adapter(platform), context)
+            _blocked_execution(source_id, _blocked_adapter(platform), slot)
         )
     return tuple(executions)
 
@@ -135,16 +168,16 @@ async def source_executions(
 def _reddit_execution(
     source_id: UUID,
     adapter: RedditAdapter,
-    context: PreflightContext,
+    slot: _AuthorizationSlot,
     credentials: RedditOAuthCredentials,
 ) -> SourceExecution:
     def preflight() -> PreflightResult:
-        return adapter.preflight(context)
+        return adapter.preflight(slot.context())
 
     async def fetch_page(state: PageCursor) -> AdapterPage:
         return await adapter.fetch_page(
             RedditFetchRequest(
-                preflight=context,
+                preflight=slot.context(),
                 credentials=credentials,
                 cursor=state.cursor,
                 accepted_so_far=state.accepted_count,
@@ -157,23 +190,24 @@ def _reddit_execution(
         platform=SourcePlatform.REDDIT,
         preflight=preflight,
         fetch_page=fetch_page,
-        authorization=context.authorization,
+        authorization=slot.value,
+        bind_authorization=slot.bind,
     )
 
 
 def _dcinside_execution(
     source_id: UUID,
     adapter: DCInsideAdapter,
-    context: PreflightContext,
+    slot: _AuthorizationSlot,
     user_agent: str,
 ) -> SourceExecution:
     def preflight() -> PreflightResult:
-        return adapter.preflight(context)
+        return adapter.preflight(slot.context())
 
     async def fetch_page(state: PageCursor) -> AdapterPage:
         return await adapter.fetch_page(
             DCInsideFetchRequest(
-                preflight=context,
+                preflight=slot.context(),
                 cursor=state.cursor,
                 accepted_so_far=state.accepted_count,
                 page_size=20,
@@ -186,22 +220,23 @@ def _dcinside_execution(
         platform=SourcePlatform.DCINSIDE,
         preflight=preflight,
         fetch_page=fetch_page,
-        authorization=context.authorization,
+        authorization=slot.value,
+        bind_authorization=slot.bind,
     )
 
 
 def _manifold_execution(
     source_id: UUID,
     adapter: ManifoldAdapter,
-    context: PreflightContext,
+    slot: _AuthorizationSlot,
 ) -> SourceExecution:
     def preflight() -> PreflightResult:
-        return adapter.preflight(context)
+        return adapter.preflight(slot.context())
 
     async def fetch_page(state: PageCursor) -> AdapterPage:
         return await adapter.fetch_page(
             ManifoldFetchRequest(
-                preflight=context,
+                preflight=slot.context(),
                 page_ordinal=state.ordinal,
                 accepted_so_far=state.accepted_count,
             )
@@ -212,28 +247,30 @@ def _manifold_execution(
         platform=SourcePlatform.MANIFOLD,
         preflight=preflight,
         fetch_page=fetch_page,
-        authorization=context.authorization,
+        authorization=slot.value,
+        bind_authorization=slot.bind,
     )
 
 
 def _blocked_execution(
     source_id: UUID,
     adapter: EvidenceBlockedAdapter,
-    context: PreflightContext,
+    slot: _AuthorizationSlot,
 ) -> SourceExecution:
     def preflight() -> PreflightResult:
-        return adapter.preflight(context)
+        return adapter.preflight(slot.context())
 
     async def fetch_page(state: PageCursor) -> AdapterPage:
         del state
-        return await adapter.fetch_page(BlockedFetchRequest(preflight=context))
+        return await adapter.fetch_page(BlockedFetchRequest(preflight=slot.context()))
 
     return SourceExecution(
         source_id=source_id,
         platform=adapter.source,
         preflight=preflight,
         fetch_page=fetch_page,
-        authorization=context.authorization,
+        authorization=slot.value,
+        bind_authorization=slot.bind,
     )
 
 

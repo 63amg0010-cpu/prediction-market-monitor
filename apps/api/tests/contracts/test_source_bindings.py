@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import pytest
@@ -21,6 +22,17 @@ from scripts.source_bindings import (
     GitHubCommand,
     IntentJournal,
 )
+from scripts.source_bindings_contracts import (
+    DOCUMENT,
+    Args,
+)
+from scripts.source_bindings_contracts import (
+    BindingPayload as RuntimeBindingPayload,
+)
+from scripts.source_bindings_contracts import (
+    GitHub as RuntimeGitHub,
+)
+from scripts.source_bindings_runtime import capture, validate_collection_receipt
 
 ROOT = Path(__file__).resolve().parents[4]
 SCRIPT = ROOT / "apps" / "api" / "scripts" / "source_bindings.py"
@@ -126,6 +138,121 @@ def test_lost_receipt_rereads_marker_without_rewriting_binding() -> None:
         ("gh", "variable", "get", "MONITOR_SOURCE_IDS"),
         ("gh", "variable", "get", "MONITOR_SCOPE_VERSION"),
     ]
+
+
+def test_capture_prestate_requires_matching_zero_provider_evidence(
+    tmp_path: Path,
+) -> None:
+    nonce = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    source_id = "d6dc5ea1-e3af-4bfe-88ad-e4beffd22ab6"
+    bindings = [{"platform": "dcinside", "source_id": source_id}]
+    protected_json = json.dumps(
+        bindings,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    payload = BindingPayload(
+        protected_json=protected_json,
+        source_ids=source_id,
+        scope_version="phase1-reviewed-v1",
+    )
+    protected = tmp_path / "bindings.json"
+    evidence = tmp_path / "evidence.json"
+    _ = protected.write_text(json.dumps(bindings, indent=2), encoding="utf-8")
+    _ = evidence.write_text(
+        json.dumps(
+            {
+                "accepted": True,
+                "activation_nonce": nonce,
+                "mode": "binding-prestate",
+                "payload_sha256": payload.sha256,
+                "provider_request_count": 0,
+                "scope_version": "phase1-reviewed-v1",
+                "source_ids": source_id,
+            }
+        ),
+        encoding="utf-8",
+    )
+    github = RecordingGitHub()
+    github.variables = {
+        "MONITOR_SOURCE_IDS": source_id,
+        "MONITOR_SCOPE_VERSION": "phase1-reviewed-v1",
+    }
+    args = Args()
+    args.command = "capture-prestate"
+    args.activation_nonce = nonce
+    args.protected_json_file = str(protected)
+    args.collection_receipt = str(evidence)
+    args.platform = ["dcinside"]
+
+    receipt = capture(args, cast("RuntimeGitHub", cast("object", github)))
+
+    assert receipt["payload_sha256"] == payload.sha256
+    assert receipt["protected_json"] == protected_json
+
+
+def test_verify_accepts_exact_successful_cadence_collection_artifact() -> None:
+    source_ids = (
+        "d6dc5ea1-e3af-4bfe-88ad-e4beffd22ab6,"
+        "0890756a-ca23-5697-ae4c-0de527361064"
+    )
+    payload = RuntimeBindingPayload("[]", source_ids, "scope-v2")
+    receipt = DOCUMENT.validate_python({
+        "schema": "cadence-operation-result.v1",
+        "schedule_kind": "collection",
+        "slot_key": "2026-08-03T00:00:00Z",
+        "started_at": "2026-08-03T00:00:00+00:00",
+        "completed_at": "2026-08-03T00:01:00+00:00",
+        "source_results": [
+            {
+                "source_id": source_id,
+                "status": "succeeded",
+                "code": "ok",
+                "retry_classification": "not_applicable",
+                "receipt_sha256": str(index) * 64,
+            }
+            for index, source_id in enumerate(source_ids.split(","), start=1)
+        ],
+    })
+
+    validate_collection_receipt(receipt, payload)
+
+
+def test_verify_rejects_unsuccessful_or_wrong_source_collection() -> None:
+    payload = RuntimeBindingPayload("[]", "first,second", "scope-v2")
+    receipt = DOCUMENT.validate_python({
+        "schema": "cadence-operation-result.v1",
+        "schedule_kind": "collection",
+        "source_results": [
+            {
+                "source_id": "first",
+                "status": "succeeded",
+                "code": "ok",
+                "retry_classification": "not_applicable",
+                "receipt_sha256": "a" * 64,
+            },
+            {
+                "source_id": "attacker",
+                "status": "failed",
+                "code": "unexpected_failure",
+                "retry_classification": "hold",
+                "receipt_sha256": "b" * 64,
+            },
+        ],
+    })
+
+    with pytest.raises(RuntimeError, match="unsuccessful source"):
+        validate_collection_receipt(receipt, payload)
+
+
+def test_handshake_has_no_unreserved_workflow_dispatch_fallback() -> None:
+    source = (ROOT / "apps/api/scripts/source_bindings_mutations.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "collector.yml" not in source
+    assert 'required(context.args.handshake_receipt, "--handshake-receipt")' in source
 
 
 def test_different_inflight_intent_is_rejected_while_lock_is_held() -> None:

@@ -206,7 +206,24 @@ jobs:
           version: "0.5.30"
           enable-cache: true
       - run: uv sync --package monitor-api --locked
+      - name: Create zero-provider binding evidence
+        if: ${{ github.event_name == 'workflow_dispatch' && contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
+        shell: bash
+        env:
+          MONITOR_SOURCE_BINDINGS_JSON: ${{ secrets.MONITOR_SOURCE_BINDINGS_JSON }}
+          MONITOR_SCOPE_VERSION: ${{ vars.MONITOR_SCOPE_VERSION }}
+          MONITOR_SOURCE_IDS: ${{ vars.MONITOR_SOURCE_IDS }}
+        run: |
+          set -euo pipefail
+          uv run --package monitor-api python apps/api/scripts/zero_provider_binding_evidence.py \
+            --mode "${{ inputs.mode }}" \
+            --activation-nonce "${{ inputs.activation_nonce }}" \
+            --source-ids "$MONITOR_SOURCE_IDS" \
+            --scope-version "$MONITOR_SCOPE_VERSION" \
+            --bindings-json-env MONITOR_SOURCE_BINDINGS_JSON \
+            --json-out "$RUNNER_TEMP/cadence-operation-result.json"
       - name: Resolve exact cadence branch
+        if: ${{ github.event_name == 'schedule' || !contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
         shell: bash
         env:
           INPUT_MODE: ${{ inputs.mode }}
@@ -241,6 +258,7 @@ jobs:
             echo "CADENCE_FAILED_ATTEMPT=$failed_attempt"
           } >> "$GITHUB_ENV"
       - name: Collect through the scoped API
+        if: ${{ github.event_name == 'schedule' || !contains(fromJSON('["binding-prestate","binding-handshake","binding-restore-verify"]'), inputs.mode) }}
         working-directory: apps/api
         run: uv run --package monitor-api python -m app.collection.cli collect
         env:
@@ -281,6 +299,7 @@ jobs:
           path: |
             ${{ runner.temp }}/operation.json
             ${{ runner.temp }}/workflow-claim-public-receipt.json
+            ${{ runner.temp }}/cadence-operation-result.json
           retention-days: 1
           if-no-files-found: error
       - name: Record durable cadence attempt

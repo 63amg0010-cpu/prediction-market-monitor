@@ -42,11 +42,15 @@ from scripts.source_bindings_db import locked as _locked
 from scripts.source_bindings_github import SubprocessGitHub, get_variable
 from scripts.source_bindings_mutations import mutate
 
+SHA256_LENGTH = 64
+REQUIRED_COLLECTION_SOURCES = 2
+
 
 def capture(args: Args, github: GitHub) -> JsonDocument:
     protected_path = required(args.protected_json_file, "--protected-json-file")
     protected = Path(protected_path).read_text(encoding="utf-8")
     bindings = BINDINGS.validate_json(protected)
+    protected = canonical(list(bindings)).decode()
     source_ids = get_variable(github, "MONITOR_SOURCE_IDS")
     scope = get_variable(github, "MONITOR_SCOPE_VERSION")
     actual_platforms = [field(binding, "platform") for binding in bindings]
@@ -55,10 +59,24 @@ def capture(args: Args, github: GitHub) -> JsonDocument:
     expected_ids = ",".join(field(binding, "source_id") for binding in bindings)
     if source_ids != expected_ids:
         raise CliError("source IDs do not match captured bindings")
+    payload = BindingPayload(protected, source_ids, scope)
+    evidence = load(required(args.collection_receipt, "--collection-receipt"))
+    expected_evidence: JsonDocument = {
+        "accepted": True,
+        "activation_nonce": args.activation_nonce,
+        "mode": "binding-prestate",
+        "payload_sha256": payload.sha256,
+        "provider_request_count": 0,
+        "scope_version": scope,
+        "source_ids": source_ids,
+    }
+    if any(evidence.get(key) != value for key, value in expected_evidence.items()):
+        raise CliError("binding prestate evidence does not match live binding")
     platform_values: list[JsonValue] = list(actual_platforms)
     receipt: JsonDocument = {
         "activation_nonce": args.activation_nonce,
         "command": "capture-prestate",
+        "payload_sha256": payload.sha256,
         "platforms": platform_values,
         "protected_json": protected,
         "scope_version": scope,
@@ -127,17 +145,7 @@ async def verify(args: Args, github: GitHub) -> JsonDocument:
         nonce,
     )
     collection = load(required(args.collection_receipt, "--collection-receipt"))
-    if collection.get("activation_nonce") != str(nonce):
-        raise CliError("collection receipt activation nonce mismatch")
-    if collection.get("payload_sha256") != payload.sha256:
-        raise CliError("collection receipt payload hash mismatch")
-    if collection.get("accepted") is not True:
-        raise CliError("collection receipt was not accepted")
-    if collection.get("mode") != "manual-provider-collection":
-        raise CliError("collection receipt is not a manual provider collection")
-    request_count = collection.get("provider_request_count")
-    if not isinstance(request_count, int) or request_count < 1:
-        raise CliError("collection receipt has no provider request")
+    validate_collection_receipt(collection, payload)
     if get_variable(github, "MONITOR_SOURCE_IDS") != payload.source_ids:
         raise CliError("live source IDs do not match")
     if get_variable(github, "MONITOR_SCOPE_VERSION") != payload.scope_version:
@@ -168,6 +176,44 @@ async def verify(args: Args, github: GitHub) -> JsonDocument:
         "payload_sha256": payload.sha256,
         "verified": True,
     }
+
+
+def validate_collection_receipt(
+    collection: JsonDocument,
+    payload: BindingPayload,
+) -> None:
+    """Require the real successful two-source collector result artifact."""
+    if collection.get("schema") != "cadence-operation-result.v1":
+        raise CliError("collection receipt schema mismatch")
+    if collection.get("schedule_kind") != "collection":
+        raise CliError("collection receipt is not a collection result")
+    results = collection.get("source_results")
+    if not isinstance(results, list):
+        raise CliError("collection receipt source results missing")
+    expected_ids = payload.source_ids.split(",")
+    actual_ids: list[str] = []
+    for result in results:
+        if not isinstance(result, dict):
+            raise CliError("collection receipt source result invalid")
+        source_id = result.get("source_id")
+        if not isinstance(source_id, str):
+            raise CliError("collection receipt source ID invalid")
+        if (
+            result.get("status") != "succeeded"
+            or result.get("code") != "ok"
+            or result.get("retry_classification") != "not_applicable"
+        ):
+            raise CliError("collection receipt has unsuccessful source")
+        receipt_sha = result.get("receipt_sha256")
+        if (
+            not isinstance(receipt_sha, str)
+            or len(receipt_sha) != SHA256_LENGTH
+            or any(char not in "0123456789abcdef" for char in receipt_sha)
+        ):
+            raise CliError("collection receipt source hash invalid")
+        actual_ids.append(source_id)
+    if actual_ids != expected_ids or len(results) != REQUIRED_COLLECTION_SOURCES:
+        raise CliError("collection receipt source set mismatch")
 
 
 def run(argv: Sequence[str] | None = None, github: GitHub | None = None) -> int:
