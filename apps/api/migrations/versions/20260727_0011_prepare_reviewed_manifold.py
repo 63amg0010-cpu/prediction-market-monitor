@@ -12,7 +12,7 @@ from scripts.release_cadence_schema import TABLES as CADENCE_TABLES
 from scripts.release_cadence_schema import execute_schema
 
 revision: str = "20260727_0011"
-down_revision: str | None = "20260803_0010f"
+down_revision: str | None = "20260803_0010g"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

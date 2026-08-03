@@ -31,7 +31,7 @@ MAX_DECODED_BODY_BYTES: Final = 8192
 SHA_PATTERN: Final = re.compile(r"^[0-9a-f]{40}$")
 SHA256_PATTERN: Final = re.compile(r"^[0-9a-f]{64}$")
 CURRENT_PATTERN: Final = re.compile(
-    r"^((?:2026072[67]_[0-9]{4})|20260803_0010[abcdef])(?: \(head\))?$"
+    r"^((?:2026072[67]_[0-9]{4})|20260803_0010[abcdefg])(?: \(head\))?$"
 )
 EXPECTED_HEAD: Final = "20260727_0011"
 WORKFLOW_PATH: Final = ".github/workflows/migrate.yml"
@@ -49,6 +49,7 @@ type MigrationRevision = Literal[
     "20260803_0010d",
     "20260803_0010e",
     "20260803_0010f",
+    "20260803_0010g",
     "20260727_0011",
 ]
 
@@ -247,8 +248,9 @@ def validate_dispatch(
         ("upgrade", "20260803_0010d", "rebind-release-root"),
         ("upgrade", "20260803_0010e", "rebind-release-root"),
         ("upgrade", "20260803_0010f", "rebind-release-root"),
+        ("upgrade", "20260803_0010g", "rebind-release-root"),
         ("upgrade", "20260727_0011", "migrate-production"),
-        ("downgrade", "20260803_0010f", "rollback-manifold"),
+        ("downgrade", "20260803_0010g", "rollback-manifold"),
     }
     if tuple_key not in allowed:
         _reject("operation_tuple_rejected")
@@ -264,6 +266,7 @@ def validate_dispatch(
         ("upgrade", "20260803_0010d", "rebind-release-root"),
         ("upgrade", "20260803_0010e", "rebind-release-root"),
         ("upgrade", "20260803_0010f", "rebind-release-root"),
+        ("upgrade", "20260803_0010g", "rebind-release-root"),
     }:
         if (
             request.attestation_run_id
@@ -279,6 +282,7 @@ def validate_dispatch(
             "20260803_0010d",
             "20260803_0010e",
             "20260803_0010f",
+            "20260803_0010g",
         } and attempt != 1:
             _reject("release_correction_attempt_invalid")
         _validate_bootstrap(request, attempt)
@@ -335,6 +339,8 @@ def validate_current(output: str, request: DispatchRequest) -> None:
         else "20260803_0010e"
         if request.revision == "20260803_0010f" and request.operation == "upgrade"
         else "20260803_0010f"
+        if request.revision == "20260803_0010g" and request.operation == "upgrade"
+        else "20260803_0010g"
         if request.revision == "20260727_0011"
         else "20260727_0011"
     )
