@@ -7,7 +7,7 @@ from alembic.script import ScriptDirectory
 
 API_ROOT = Path(__file__).parents[2]
 ALEMBIC_INI = API_ROOT / "alembic.ini"
-EXPECTED_HEAD = "20260803_0012"
+EXPECTED_HEAD = "20260803_0013"
 
 
 def _alembic_config() -> tuple[Config, StringIO]:
@@ -31,6 +31,7 @@ def test_phase_two_contract_migration_is_the_only_current_head() -> None:
     # Then: every Phase 2 correction remains on one ordered migration chain.
     assert script.get_heads() == [EXPECTED_HEAD]
     assert tuple(item.revision for item in revisions) == (
+        "20260803_0013",
         "20260803_0012",
         "20260727_0011",
         "20260803_0010h",
@@ -53,6 +54,7 @@ def test_phase_two_contract_migration_is_the_only_current_head() -> None:
         "20260721_0001",
     )
     assert tuple(item.down_revision for item in revisions) == (
+        "20260803_0012",
         "20260727_0011",
         "20260803_0010h",
         "20260803_0010g",

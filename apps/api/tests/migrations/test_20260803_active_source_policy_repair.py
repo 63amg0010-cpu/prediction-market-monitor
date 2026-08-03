@@ -9,13 +9,13 @@ API_ROOT = Path(__file__).parents[2]
 REVISION = "20260803_0012"
 
 
-def test_0012_is_the_single_head_after_manifold_preparation() -> None:
+def test_0012_precedes_the_authorization_scope_repair() -> None:
     script = ScriptDirectory.from_config(Config(str(API_ROOT / "alembic.ini")))
     revision = script.get_revision(REVISION)
 
     assert revision is not None
     assert revision.down_revision == "20260727_0011"
-    assert script.get_heads() == [REVISION]
+    assert script.get_heads() == ["20260803_0013"]
 
 
 def test_0012_repairs_only_the_reviewed_scope_and_zeroed_budget() -> None:

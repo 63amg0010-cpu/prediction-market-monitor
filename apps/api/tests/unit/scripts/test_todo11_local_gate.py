@@ -140,8 +140,8 @@ def test_production_supabase_and_nonexact_targets_fail_before_engine_or_ddl(
         database_url_env="QA_URL",
         expected_database="monitor_migration_qa",
         json_out=tmp_path / "result.json",
-        expected_head="20260803_0012",
-        expected_current="20260803_0012",
+        expected_head="20260803_0013",
+        expected_current="20260803_0013",
         expected_index="ix_post_versions_search_text_trgm",
     )
 
@@ -544,7 +544,7 @@ def test_alembic_head_output_keeps_strict_utf8_decoding(
         **kwargs: object,
     ) -> subprocess.CompletedProcess[str]:
         captured_options.update(kwargs)
-        return subprocess.CompletedProcess(argv, 0, "20260803_0012 (head)\n", "")
+        return subprocess.CompletedProcess(argv, 0, "20260803_0013 (head)\n", "")
 
     monkeypatch.setattr(orchestrator.subprocess, "run", completed)
 

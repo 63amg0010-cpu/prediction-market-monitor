@@ -20,7 +20,7 @@ def test_0011_follows_0010h_without_branching() -> None:
     # Then: 0011 preserves the 0010 ledger schema beneath the repair head.
     assert revision is not None
     assert revision.down_revision == "20260803_0010h"
-    assert script.get_heads() == ["20260803_0012"]
+    assert script.get_heads() == ["20260803_0013"]
 
 
 def test_0011_renders_append_only_activation_schema_and_inert_source() -> None:

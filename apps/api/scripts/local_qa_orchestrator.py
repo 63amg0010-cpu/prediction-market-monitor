@@ -66,7 +66,7 @@ def _real_executor(label: str, argv: Argv, env: dict[str, str]) -> int:
         _ = sys.stderr.write(console_safe_text(stderr, sys.stderr.encoding))
     if capture and completed.returncode == 0:
         heads = [line.strip() for line in stdout.splitlines() if line.strip()]
-        if heads != ["20260803_0012 (head)"]:
+        if heads != ["20260803_0013 (head)"]:
             return 86
     return completed.returncode
 
