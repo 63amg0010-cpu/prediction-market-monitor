@@ -54,6 +54,15 @@ MIGRATION_INPUT_ENV_NAMES: Final = (
     "MIGRATION_CORRECTION_ACTIVATION_NONCE",
     "MIGRATION_CORRECTION_DISPATCH_NONCE",
     "MIGRATION_CORRECTION_ATTEMPT",
+    "MIGRATION_REBIND_REVIEW_ROOT_B64",
+    "MIGRATION_REBIND_REVIEW_ROOT_SHA256",
+    "MIGRATION_REBIND_NO_SPEND_RECEIPT_B64",
+    "MIGRATION_REBIND_NO_SPEND_RECEIPT_SHA256",
+    "MIGRATION_REBIND_EXPECTED_COMMIT_SHA",
+    "MIGRATION_REBIND_EXPECTED_PLAN_SHA256",
+    "MIGRATION_REBIND_ACTIVATION_NONCE",
+    "MIGRATION_REBIND_DISPATCH_NONCE",
+    "MIGRATION_REBIND_ATTEMPT",
     "GITHUB_RUN_ID",
     "RUNNER_TEMP",
 )
@@ -238,6 +247,16 @@ def _bootstrap_environment(
         protected,
         "correction",
     )
+    rebind_nonce = str(
+        uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:rebind-activation")
+    )
+    rebind_root, rebind_no_spend = _release_pair(
+        reviewed_sha,
+        plan_sha,
+        rebind_nonce,
+        protected,
+        "rebind",
+    )
     return {
         "MIGRATION_REVIEW_ROOT_B64": base64.b64encode(initial_root).decode(),
         "MIGRATION_NO_SPEND_RECEIPT_B64": base64.b64encode(initial_no_spend).decode(),
@@ -267,6 +286,21 @@ def _bootstrap_environment(
             uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:correction-dispatch")
         ),
         "MIGRATION_CORRECTION_ATTEMPT": "1",
+        "MIGRATION_REBIND_REVIEW_ROOT_B64": base64.b64encode(rebind_root).decode(),
+        "MIGRATION_REBIND_REVIEW_ROOT_SHA256": hashlib.sha256(rebind_root).hexdigest(),
+        "MIGRATION_REBIND_NO_SPEND_RECEIPT_B64": base64.b64encode(
+            rebind_no_spend
+        ).decode(),
+        "MIGRATION_REBIND_NO_SPEND_RECEIPT_SHA256": hashlib.sha256(
+            rebind_no_spend
+        ).hexdigest(),
+        "MIGRATION_REBIND_EXPECTED_COMMIT_SHA": reviewed_sha,
+        "MIGRATION_REBIND_EXPECTED_PLAN_SHA256": plan_sha,
+        "MIGRATION_REBIND_ACTIVATION_NONCE": rebind_nonce,
+        "MIGRATION_REBIND_DISPATCH_NONCE": str(
+            uuid5(NAMESPACE_URL, f"local-qa:{reviewed_sha}:rebind-dispatch")
+        ),
+        "MIGRATION_REBIND_ATTEMPT": "1",
         "GITHUB_RUN_ID": "1",
         "RUNNER_TEMP": runner_temp,
     }

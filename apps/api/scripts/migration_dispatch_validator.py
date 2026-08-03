@@ -31,7 +31,7 @@ MAX_DECODED_BODY_BYTES: Final = 8192
 SHA_PATTERN: Final = re.compile(r"^[0-9a-f]{40}$")
 SHA256_PATTERN: Final = re.compile(r"^[0-9a-f]{64}$")
 CURRENT_PATTERN: Final = re.compile(
-    r"^((?:2026072[67]_[0-9]{4})|20260803_0010a)(?: \(head\))?$"
+    r"^((?:2026072[67]_[0-9]{4})|20260803_0010[ab])(?: \(head\))?$"
 )
 EXPECTED_HEAD: Final = "20260727_0011"
 WORKFLOW_PATH: Final = ".github/workflows/migrate.yml"
@@ -232,21 +232,28 @@ def validate_dispatch(
     allowed = {
         ("upgrade", "20260727_0010", "migrate-production"),
         ("upgrade", "20260803_0010a", "repair-release-foundation"),
+        ("upgrade", "20260803_0010b", "rebind-release-root"),
         ("upgrade", "20260727_0011", "migrate-production"),
-        ("downgrade", "20260803_0010a", "rollback-manifold"),
+        ("downgrade", "20260803_0010b", "rollback-manifold"),
     }
     if tuple_key not in allowed:
         _reject("operation_tuple_rejected")
     operation: Literal["upgrade", "downgrade"] = (
         "upgrade" if request.operation == "upgrade" else "downgrade"
     )
-    revision: Literal["20260727_0010", "20260803_0010a", "20260727_0011"] = cast(
-        "Literal['20260727_0010', '20260803_0010a', '20260727_0011']",
+    revision: Literal[
+        "20260727_0010",
+        "20260803_0010a",
+        "20260803_0010b",
+        "20260727_0011",
+    ] = cast(
+        "Literal['20260727_0010', '20260803_0010a', '20260803_0010b', '20260727_0011']",
         request.revision,
     )
     if tuple_key in {
         ("upgrade", "20260727_0010", "migrate-production"),
         ("upgrade", "20260803_0010a", "repair-release-foundation"),
+        ("upgrade", "20260803_0010b", "rebind-release-root"),
     }:
         if (
             request.attestation_run_id
@@ -255,7 +262,7 @@ def validate_dispatch(
             or request.attestation_sha256
         ):
             _reject("bootstrap_attestation_forbidden")
-        if request.revision == "20260803_0010a" and attempt != 1:
+        if request.revision in {"20260803_0010a", "20260803_0010b"} and attempt != 1:
             _reject("release_correction_attempt_invalid")
         _validate_bootstrap(request, attempt)
     else:
@@ -301,6 +308,8 @@ def validate_current(output: str, request: DispatchRequest) -> None:
         else "20260727_0010"
         if request.revision == "20260803_0010a" and request.operation == "upgrade"
         else "20260803_0010a"
+        if request.revision == "20260803_0010b" and request.operation == "upgrade"
+        else "20260803_0010b"
         if request.revision == "20260727_0011"
         else "20260727_0011"
     )

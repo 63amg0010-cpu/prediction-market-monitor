@@ -188,6 +188,9 @@ jobs:
           elif [ "$OPERATION:$REVISION" = "upgrade:20260803_0010a" ]; then
             test "$ledger_absent" = "f"
             test "$receipt_chain_absent" = "t"
+          elif [ "$OPERATION:$REVISION" = "upgrade:20260803_0010b" ]; then
+            test "$ledger_absent" = "f"
+            test "$receipt_chain_absent" = "f"
           else
             test "$ledger_absent" = "f"
             test "$receipt_chain_absent" = "f"
@@ -293,12 +296,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          claimed="$(psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+          claimed="$(printf '%s\n' "SELECT count(*) = 1 FROM release_operation_reservations WHERE activation_nonce = :'activation_nonce'::uuid AND dispatch_nonce = :'dispatch_nonce'::uuid AND receipt_sha256 = :'reservation_sha256' AND claimed_run_id = :'run_id'::bigint;" \
+            | psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
             --set=activation_nonce="$ACTIVATION_NONCE" \
             --set=dispatch_nonce="$DISPATCH_NONCE" \
             --set=reservation_sha256="$RESERVATION_SHA256" \
-            --set=run_id="$GITHUB_RUN_ID" \
-            --command="SELECT count(*) = 1 FROM release_operation_reservations WHERE activation_nonce = :'activation_nonce'::uuid AND dispatch_nonce = :'dispatch_nonce'::uuid AND receipt_sha256 = :'reservation_sha256' AND claimed_run_id = :'run_id'::bigint")"
+            --set=run_id="$GITHUB_RUN_ID")"
           test "$claimed" = "t"
           CLAIMED_RESERVATION_SHA256="$RESERVATION_SHA256" \
             uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-dispatch
@@ -369,6 +372,15 @@ jobs:
           MIGRATION_CORRECTION_ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
           MIGRATION_CORRECTION_DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
           MIGRATION_CORRECTION_ATTEMPT: ${{ inputs.attempt }}
+          MIGRATION_REBIND_REVIEW_ROOT_B64: ${{ inputs.review_root_b64 }}
+          MIGRATION_REBIND_REVIEW_ROOT_SHA256: ${{ inputs.review_root_sha256 }}
+          MIGRATION_REBIND_NO_SPEND_RECEIPT_B64: ${{ inputs.no_spend_receipt_b64 }}
+          MIGRATION_REBIND_NO_SPEND_RECEIPT_SHA256: ${{ inputs.no_spend_receipt_sha256 }}
+          MIGRATION_REBIND_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          MIGRATION_REBIND_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+          MIGRATION_REBIND_ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
+          MIGRATION_REBIND_DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          MIGRATION_REBIND_ATTEMPT: ${{ inputs.attempt }}
           MIGRATION_FAILED_ATTEMPT_RECEIPT_B64: ${{ inputs.attempt1_failed_receipt_b64 }}
           MIGRATION_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
           MIGRATION_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
@@ -387,27 +399,34 @@ jobs:
           RESULT_FILE="$RUNNER_TEMP/alembic-result.txt" uv run --package monitor-api python -m scripts.migration_dispatch_validator validate-result
         env:
           DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
-      - name: Export canonical 0010a correction receipt
-        if: ${{ inputs.operation == 'upgrade' && inputs.revision == '20260803_0010a' }}
+      - name: Export canonical correction receipt
+        if: ${{ inputs.operation == 'upgrade' && (inputs.revision == '20260803_0010a' || inputs.revision == '20260803_0010b') }}
         shell: bash
         run: |
           set -euo pipefail
-          psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+          case "$REVISION" in
+            20260803_0010a) correction_command="release-correction-0010a" ;;
+            20260803_0010b) correction_command="release-correction-0010b" ;;
+            *) exit 2 ;;
+          esac
+          printf '%s\n' "SELECT convert_from(canonical_receipt, 'UTF8') FROM release_receipt_chain WHERE command = :'correction_command' AND dispatch_nonce = :'dispatch_nonce'::uuid;" \
+            | psql "$PG_DUMP_DATABASE_URL" --no-psqlrc --tuples-only --no-align \
+            --set=correction_command="$correction_command" \
             --set=dispatch_nonce="$DISPATCH_NONCE" \
-            --command="SELECT convert_from(canonical_receipt, 'UTF8') FROM release_receipt_chain WHERE command='release-correction-0010a' AND dispatch_nonce=:'dispatch_nonce'::uuid" \
             | tr -d '\r\n' > "$RUNNER_TEMP/operation.json"
           jq -e \
             --arg reviewed_sha "$EXPECTED_COMMIT_SHA" \
             --arg dispatch_nonce "$DISPATCH_NONCE" \
-            '.command == "release-correction-0010a" and .reviewed_sha == $reviewed_sha and .dispatch_nonce == $dispatch_nonce and .accepted == true and .terminal_for_attempt == true' \
+            --arg correction_command "$correction_command" \
+            '.command == $correction_command and .reviewed_sha == $reviewed_sha and .dispatch_nonce == $dispatch_nonce and .accepted == true and .terminal_for_attempt == true' \
             "$RUNNER_TEMP/operation.json" > /dev/null
         env:
           PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
-      - name: Upload terminal 0010a correction receipt
-        if: ${{ inputs.operation == 'upgrade' && inputs.revision == '20260803_0010a' }}
+      - name: Upload terminal correction receipt
+        if: ${{ inputs.operation == 'upgrade' && (inputs.revision == '20260803_0010a' || inputs.revision == '20260803_0010b') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: migrate-repair-0010a-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          name: migrate-repair-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
           path: ${{ runner.temp }}/operation.json
           retention-days: 1
           if-no-files-found: error
@@ -416,7 +435,7 @@ jobs:
         run: |
           uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
             --api-url "${{ vars.MONITOR_API_URL }}" \
-            --command "${{ inputs.operation == 'upgrade' && 'migrate-0011' || 'migrate-0011-to-0010a' }}" \
+            --command "${{ inputs.operation == 'upgrade' && 'migrate-0011' || 'migrate-0011-to-0010b' }}" \
             --display-title "migrate-${{ inputs.operation }}-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}" \
             --evidence "$RUNNER_TEMP/alembic-result.txt" \
             --expected-plan-sha256 "${{ inputs.expected_plan_sha256 }}" \
@@ -432,14 +451,14 @@ jobs:
         if: ${{ inputs.reservation_sha256 != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: migrate-${{ inputs.operation == 'upgrade' && '0011' || 'downgrade-0010a' }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          name: migrate-${{ inputs.operation == 'upgrade' && '0011' || 'downgrade-0010b' }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
           path: |
             ${{ runner.temp }}/operation.json
             ${{ runner.temp }}/workflow-claim-public-receipt.json
           retention-days: 1
           if-no-files-found: error
       - name: Verify failed operation remained at the safe revision
-        if: ${{ failure() }}
+        if: ${{ steps.migration.outcome == 'failure' }}
         run: |
           set -euo pipefail
           uv run --package monitor-api alembic -c apps/api/alembic.ini current > "$RUNNER_TEMP/alembic-failed-current.txt"

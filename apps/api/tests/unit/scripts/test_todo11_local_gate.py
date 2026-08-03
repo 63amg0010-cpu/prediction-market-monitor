@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import json
 import subprocess
 import sys
@@ -50,6 +51,7 @@ from scripts.local_qa_manifest import (
     provision_argv,
     runtime_argv,
 )
+from scripts.migration_dispatch_models import ReviewRoot
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -67,9 +69,7 @@ GUARD = (
 FAILURES = GUARD.with_name("fail-each-child.json")
 BASE_SHA = "a" * 40
 REVIEWED_SHA = "b" * 40
-TARGET_URL = (
-    "postgresql+asyncpg://qa:redaction-sentinel@127.0.0.1/monitor_migration_qa"
-)
+TARGET_URL = "postgresql+asyncpg://qa:redaction-sentinel@127.0.0.1/monitor_migration_qa"
 ADMIN_URL = "postgresql+asyncpg://qa:redaction-sentinel@127.0.0.1/postgres"
 
 
@@ -266,6 +266,13 @@ def test_manifest_is_the_exact_ordered_twenty_command_contract(tmp_path: Path) -
     assert len(commands) == 20
     assert commands[0] == ("uv", "sync", "--frozen", "--all-packages")
     assert commands[1] == ("pnpm", "install", "--frozen-lockfile")
+    for number, command in enumerate(commands[4:7], start=5):
+        assert command[5:9] == (
+            "-p",
+            "no:cacheprovider",
+            "--basetemp",
+            str(tmp_path / f"pytest-command-{number:02d}"),
+        )
     assert commands[7][-4:] == (
         "alembic",
         "-c",
@@ -366,16 +373,22 @@ def test_only_exact_command_eleven_gets_api_working_directory(
         label = f"command-{number:02d}"
         expected = api if number == 11 else root
         assert runtime_working_directory(label, argv, ROOT) == expected
-    assert runtime_working_directory(
-        "provision",
-        provision_argv(tmp_path, "QA_ADMIN_URL", "QA_URL"),
-        ROOT,
-    ) == root
-    assert runtime_working_directory(
-        "dispose",
-        dispose_argv(tmp_path, "QA_ADMIN_URL", "QA_URL"),
-        ROOT,
-    ) == root
+    assert (
+        runtime_working_directory(
+            "provision",
+            provision_argv(tmp_path, "QA_ADMIN_URL", "QA_URL"),
+            ROOT,
+        )
+        == root
+    )
+    assert (
+        runtime_working_directory(
+            "dispose",
+            dispose_argv(tmp_path, "QA_ADMIN_URL", "QA_URL"),
+            ROOT,
+        )
+        == root
+    )
 
 
 def test_command_eleven_wrong_argv_or_missing_api_path_fails_closed(
@@ -700,8 +713,7 @@ def test_unit_contract_child_cannot_open_inherited_qa_database(
     ) -> int:
         nonlocal connection_attempts
         if label == "command-05" and any(
-            name in env
-            for name in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "QA_URL")
+            name in env for name in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "QA_URL")
         ):
             connection_attempts += 1
         return 0
@@ -733,12 +745,32 @@ def test_command_nine_gets_valid_fresh_0011_evidence_only_for_its_child(
         if label == "command-09":
             assert attestation_env in env
             assert receipt_env in env
+            correction_root = ReviewRoot.model_validate_json(
+                base64.b64decode(
+                    env["MIGRATION_CORRECTION_REVIEW_ROOT_B64"],
+                    validate=True,
+                )
+            )
+            rebind_root = ReviewRoot.model_validate_json(
+                base64.b64decode(
+                    env["MIGRATION_REBIND_REVIEW_ROOT_B64"],
+                    validate=True,
+                )
+            )
+            assert rebind_root.reviewed_sha == correction_root.reviewed_sha
+            assert (
+                rebind_root.approved_plan_sha256 == correction_root.approved_plan_sha256
+            )
+            assert (
+                rebind_root.protected_identity_hashes
+                == correction_root.protected_identity_hashes
+            )
+            assert rebind_root.activation_nonce != correction_root.activation_nonce
+            assert rebind_root.approval_round_id != correction_root.approval_round_id
             with monkeypatch.context() as context:
                 context.setenv(attestation_env, env[attestation_env])
                 context.setenv(receipt_env, env[receipt_env])
-                attestation, _, attestation_sha, _ = load_evidence(
-                    "phase1-reviewed-v1"
-                )
+                attestation, _, attestation_sha, _ = load_evidence("phase1-reviewed-v1")
             receipt = ActivationEvidenceReceipt.model_validate_json(
                 Path(env[receipt_env]).read_bytes()
             )

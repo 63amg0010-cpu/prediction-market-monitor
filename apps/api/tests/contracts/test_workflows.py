@@ -134,7 +134,7 @@ def test_verifier_has_exact_independent_public_schedule_and_manual_private_gate(
     assert "BEARER_TOKEN" not in rendered
 
 
-def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> None:
+def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> None:  # noqa: PLR0915
     # Given: the only workflow allowed a migration database connection.
     workflow = _workflow("migrate.yml")
     triggers = _mapping(workflow["on"])
@@ -165,9 +165,9 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
         "attempt1_failed_receipt_sha256",
         "attempt1_failed_receipt_b64",
         "attestation_run_id",
-            "attestation_generation",
-            "attestation_dispatch_nonce",
-            "attestation_sha256",
+        "attestation_generation",
+        "attestation_dispatch_nonce",
+        "attestation_sha256",
         "reservation_sha256",
     }
     named_steps = _named_steps(job)
@@ -233,6 +233,17 @@ def test_migration_workflow_is_reviewed_revision_only_and_never_restores() -> No
         "PG_RESTORE_DATABASE_URL",
     }
     assert "Roll back failed migration" not in named_steps
+    assert (
+        named_steps["Verify failed operation remained at the safe revision"]["if"]
+        == "${{ steps.migration.outcome == 'failure' }}"
+    )
+    reservation_check = str(named_steps["Verify claimed durable reservation"]["run"])
+    assert "printf '%s\\n'" in reservation_check
+    assert "--command=" not in reservation_check
+    correction_export = str(named_steps["Export canonical correction receipt"]["run"])
+    assert "release-correction-0010a" in correction_export
+    assert "release-correction-0010b" in correction_export
+    assert "--command=" not in correction_export
     assert "Encrypt and decrypt-test pre-migration backup" in named_steps
     assert "Upload encrypted recovery artifact" in named_steps
     assert "Verify claimed durable reservation" in named_steps
