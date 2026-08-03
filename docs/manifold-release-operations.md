@@ -15,6 +15,7 @@ The repository has one Alembic head: `20260727_0011`. The release path is delibe
 - `20260803_0010e`: append-only reviewed-root rebind after adopting GitHub's immutable repository-ID OIDC subject and direct `workflow_ref`, with no source mutation;
 - `20260803_0010f`: append-only reviewed-root rebind after correcting the pre-0011 activation-reservation lookup, with no source mutation;
 - `20260803_0010g`: append-only reviewed-root rebind after canonicalizing the activation-evidence receipt, with no source mutation;
+- `20260803_0010h`: append-only reviewed-root rebind after fixing zero-provider binding evidence and DB-owned authorization handoff, with no source mutation;
 - `20260727_0011`: append-only activation evidence and a prepared, disabled, unlinked Manifold source.
 
 Neither migration activates collection. Manifold becomes active only at the later activation commit.

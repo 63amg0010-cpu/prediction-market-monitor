@@ -20,7 +20,35 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from datetime import datetime
 
+    from app.api.routes.collector_models import ClaimedRunResponse
+
     from .completion_models import CompletionResponse
+
+
+def _preflight(execution: SourceExecution) -> None:
+    result = execution.preflight()
+    if isinstance(result, PreflightBlocked):
+        raise SourceBlockedError(execution.platform, result)
+
+
+def _preflight_static_sources(sources: tuple[SourceExecution, ...]) -> None:
+    for source in sources:
+        if source.authorization is None and source.bind_authorization is not None:
+            continue
+        _preflight(source)
+
+
+def _bind_claimed_authorization(
+    execution: SourceExecution,
+    run: ClaimedRunResponse,
+) -> None:
+    supplied = execution.authorization
+    if supplied is not None and supplied != run.authorization:
+        error_code = "claimed_authorization_snapshot_mismatch"
+        raise CollectorWorkflowError(error_code)
+    if supplied is None and execution.bind_authorization is not None:
+        execution.bind_authorization(run.authorization)
+        _preflight(execution)
 
 
 async def run_collection_workflow(
@@ -38,10 +66,7 @@ async def run_collection_workflow(
     ):
         error_code = "collector_source_set_mismatch"
         raise CollectorWorkflowError(error_code)
-    for source in sources:
-        preflight = source.preflight()
-        if isinstance(preflight, PreflightBlocked):
-            raise SourceBlockedError(source.platform, preflight)
+    _preflight_static_sources(sources)
     command_ids = (
         (invocation.command_id,)
         if invocation.command_id is not None
@@ -75,10 +100,7 @@ async def run_collection_workflow(
             error_code = "claimed_run_set_mismatch"
             raise CollectorWorkflowError(error_code)
         for source_id, run in runs.items():
-            supplied = source_map[source_id].authorization
-            if supplied is not None and supplied != run.authorization:
-                error_code = "claimed_authorization_snapshot_mismatch"
-                raise CollectorWorkflowError(error_code)
+            _bind_claimed_authorization(source_map[source_id], run)
         outcomes = [
             await collect_run(
                 control,

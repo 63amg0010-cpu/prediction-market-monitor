@@ -99,6 +99,20 @@ def options(tmp_path: Path, *, wrapper: str = "powershell") -> orchestrator.Opti
     )
 
 
+def _review_root_from_env(environment: dict[str, str], name: str) -> ReviewRoot:
+    return ReviewRoot.model_validate_json(
+        base64.b64decode(environment[name], validate=True)
+    )
+
+
+def _assert_rebind_successor(prior: ReviewRoot, successor: ReviewRoot) -> None:
+    assert successor.reviewed_sha == prior.reviewed_sha
+    assert successor.approved_plan_sha256 == prior.approved_plan_sha256
+    assert successor.protected_identity_hashes == prior.protected_identity_hashes
+    assert successor.activation_nonce != prior.activation_nonce
+    assert successor.approval_round_id != prior.approval_round_id
+
+
 @pytest.mark.parametrize(
     "url",
     [
@@ -745,47 +759,25 @@ def test_command_nine_gets_valid_fresh_0011_evidence_only_for_its_child(
         if label == "command-09":
             assert attestation_env in env
             assert receipt_env in env
-            correction_root = ReviewRoot.model_validate_json(
-                base64.b64decode(
-                    env["MIGRATION_CORRECTION_REVIEW_ROOT_B64"],
-                    validate=True,
-                )
+            correction_root = _review_root_from_env(
+                env, "MIGRATION_CORRECTION_REVIEW_ROOT_B64"
             )
-            rebind_root = ReviewRoot.model_validate_json(
-                base64.b64decode(
-                    env["MIGRATION_REBIND_REVIEW_ROOT_B64"],
-                    validate=True,
-                )
+            rebind_root = _review_root_from_env(
+                env, "MIGRATION_REBIND_REVIEW_ROOT_B64"
             )
-            dispatch_rebind_root = ReviewRoot.model_validate_json(
-                base64.b64decode(
-                    env["MIGRATION_DISPATCH_REBIND_REVIEW_ROOT_B64"],
-                    validate=True,
-                )
+            dispatch_rebind_root = _review_root_from_env(
+                env, "MIGRATION_DISPATCH_REBIND_REVIEW_ROOT_B64"
             )
-            assert rebind_root.reviewed_sha == correction_root.reviewed_sha
-            assert (
-                rebind_root.approved_plan_sha256 == correction_root.approved_plan_sha256
+            canonical_rebind_root = _review_root_from_env(
+                env, "MIGRATION_CANONICAL_REBIND_REVIEW_ROOT_B64"
             )
-            assert (
-                rebind_root.protected_identity_hashes
-                == correction_root.protected_identity_hashes
+            zero_provider_rebind_root = _review_root_from_env(
+                env, "MIGRATION_ZERO_PROVIDER_REBIND_REVIEW_ROOT_B64"
             )
-            assert rebind_root.activation_nonce != correction_root.activation_nonce
-            assert rebind_root.approval_round_id != correction_root.approval_round_id
-            assert dispatch_rebind_root.reviewed_sha == correction_root.reviewed_sha
-            assert (
-                dispatch_rebind_root.approved_plan_sha256
-                == correction_root.approved_plan_sha256
-            )
-            assert (
-                dispatch_rebind_root.protected_identity_hashes
-                == correction_root.protected_identity_hashes
-            )
-            assert dispatch_rebind_root.activation_nonce != rebind_root.activation_nonce
-            assert (
-                dispatch_rebind_root.approval_round_id
-                != rebind_root.approval_round_id
+            _assert_rebind_successor(correction_root, rebind_root)
+            _assert_rebind_successor(rebind_root, dispatch_rebind_root)
+            _assert_rebind_successor(
+                canonical_rebind_root, zero_provider_rebind_root
             )
             with monkeypatch.context() as context:
                 context.setenv(attestation_env, env[attestation_env])

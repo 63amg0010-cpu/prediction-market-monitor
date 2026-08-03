@@ -169,6 +169,7 @@ def test_bootstrap_tuple_is_accepted_with_exact_quoted_revision() -> None:
         ("20260803_0010e", "rebind-release-root", "20260803_0010d"),
         ("20260803_0010f", "rebind-release-root", "20260803_0010e"),
         ("20260803_0010g", "rebind-release-root", "20260803_0010f"),
+        ("20260803_0010h", "rebind-release-root", "20260803_0010g"),
     ],
 )
 def test_release_corrections_are_attempt_one_and_exactly_sequenced(
@@ -262,9 +263,9 @@ def test_attempt_two_requires_matching_failed_safe_receipt() -> None:
 
 
 def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None:
-    # Given: the reviewed 0011 upgrade and 0011-to-0010g downgrade tuples.
+    # Given: the reviewed 0011 upgrade and 0011-to-0010h downgrade tuples.
     upgrade = _post_ledger_request("upgrade", "20260727_0011", "migrate-production")
-    downgrade = _post_ledger_request("downgrade", "20260803_0010g", "rollback-manifold")
+    downgrade = _post_ledger_request("downgrade", "20260803_0010h", "rollback-manifold")
 
     # When: both post-ledger requests are validated.
     upgrade_result = validate_dispatch(
@@ -277,6 +278,18 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
     # Then: each yields only its exact quoted revision and operation.
     assert upgrade_result.alembic_argv[-2:] == ("upgrade", "20260727_0011")
     assert downgrade_result.alembic_argv[-2:] == (
+        "downgrade",
+        "20260803_0010h",
+    )
+
+    reconciliation = _post_ledger_request(
+        "downgrade", "20260803_0010g", "rollback-manifold"
+    )
+    reconciliation_result = validate_dispatch(
+        reconciliation,
+        claimed_reservation_sha256=reconciliation.reservation_sha256,
+    )
+    assert reconciliation_result.alembic_argv[-2:] == (
         "downgrade",
         "20260803_0010g",
     )
@@ -299,7 +312,7 @@ def test_post_ledger_tuples_require_empty_bodies_and_exact_attestation() -> None
         ),
         _post_ledger_request(
             "downgrade",
-            "20260803_0010g",
+            "20260803_0010h",
             "rollback-manifold",
             review_root_sha256="c" * 64,
         ),

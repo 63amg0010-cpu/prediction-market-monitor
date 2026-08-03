@@ -12,12 +12,10 @@ from uuid import UUID
 
 from scripts.source_bindings_contracts import (
     MUTATION_COMMAND,
-    REPOSITORY,
     Args,
     BindingPayload,
     CliError,
     GitHub,
-    GitHubCommand,
     JsonDocument,
     binding_payload,
     load,
@@ -98,55 +96,26 @@ async def _apply(context: MutationContext) -> tuple[str, bool]:
 async def _handshake(context: MutationContext) -> tuple[str, bool]:
     if context.latest_state not in {"binding_committed", "handshake_passed"}:
         raise CliError("handshake predecessor state is invalid")
-    if context.args.handshake_receipt:
-        receipt = load(context.args.handshake_receipt)
-        expected: JsonDocument = {
-            "accepted": True,
-            "activation_nonce": str(context.nonce),
-            "mode": "binding-handshake",
-            "payload_sha256": context.payload.sha256,
-            "scope_version": context.payload.scope_version,
-            "source_ids": context.payload.source_ids,
-        }
-        if any(receipt.get(key) != value for key, value in expected.items()):
-            raise CliError("handshake receipt does not match intent")
-        await append_transition(
-            context.connection,
-            context.nonce,
-            context.intent_id,
-            context.attestation_id,
-            "handshake_passed",
-        )
-        return "handshake_passed", False
-    dispatch_nonce = UUID(required(context.args.dispatch_nonce, "--dispatch-nonce"))
-    attempt = context.args.attempt
-    if attempt not in {1, 2}:
-        raise CliError("--attempt must be 1 or 2")
-    _ = context.github.execute(
-        GitHubCommand(
-            (
-                "gh",
-                "workflow",
-                "run",
-                "collector.yml",
-                "--repo",
-                REPOSITORY,
-                "--ref",
-                "main",
-                "-f",
-                "mode=binding-handshake",
-                "-f",
-                f"activation_nonce={context.nonce}",
-                "-f",
-                f"payload_sha256={context.payload.sha256}",
-                "-f",
-                f"dispatch_nonce={dispatch_nonce}",
-                "-f",
-                f"attempt={attempt}",
-            )
-        )
+    receipt = load(required(context.args.handshake_receipt, "--handshake-receipt"))
+    expected: JsonDocument = {
+        "accepted": True,
+        "activation_nonce": str(context.nonce),
+        "mode": "binding-handshake",
+        "payload_sha256": context.payload.sha256,
+        "provider_request_count": 0,
+        "scope_version": context.payload.scope_version,
+        "source_ids": context.payload.source_ids,
+    }
+    if any(receipt.get(key) != value for key, value in expected.items()):
+        raise CliError("handshake receipt does not match intent")
+    await append_transition(
+        context.connection,
+        context.nonce,
+        context.intent_id,
+        context.attestation_id,
+        "handshake_passed",
     )
-    return "handshake_dispatched", False
+    return "handshake_passed", False
 
 
 async def _finalize(context: MutationContext) -> tuple[str, bool]:

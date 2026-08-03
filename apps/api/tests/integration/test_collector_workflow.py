@@ -174,6 +174,75 @@ async def test_collect_command_blocks_source_before_materialization() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dynamic_binding_uses_claimed_authorization_before_fetch() -> None:
+    # Given: the protected binding identifies only a platform and source ID.
+    events: list[str] = []
+    workflow_control = WorkflowControl(events)
+    authorization = None
+
+    def bind_claimed(value: object) -> None:
+        nonlocal authorization
+        events.append("bind-authorization")
+        authorization = value
+
+    def preflight() -> PreflightReady | PreflightBlocked:
+        events.append("preflight")
+        if authorization is None:
+            return PreflightBlocked(
+                kind=BlockedKind.BLOCKED_AUTHORIZATION,
+                code="authorization_missing",
+            )
+        return PreflightReady(decision_id=COMMIT_ID)
+
+    async def fetch_page(state: PageCursor) -> AdapterPage:
+        del state
+        assert authorization is not None
+        events.append("fetch")
+        return AdapterPage(
+            items=(),
+            next_cursor=None,
+            accepted_count=0,
+            rejected_count=0,
+            rate_limit=RateLimitSnapshot(
+                used=None,
+                remaining=None,
+                reset_after_seconds=None,
+                retry_after_seconds=None,
+            ),
+            termination=PageTermination.SOURCE_EXHAUSTED,
+        )
+
+    source = SourceExecution(
+        source_id=SOURCE_ID,
+        platform=SourcePlatform.REDDIT,
+        preflight=preflight,
+        fetch_page=fetch_page,
+        authorization=None,
+        bind_authorization=bind_claimed,
+    )
+
+    # When: the real collector claims the DB-owned authorization snapshot.
+    _ = await execute_collect_command(
+        {
+            "MONITOR_SCOPE_VERSION": "scope-v1",
+            "MONITOR_DEPLOYMENT_ACTIVATION_AT": NOW.isoformat(),
+            "MONITOR_SOURCE_IDS": str(SOURCE_ID),
+            "GITHUB_RUN_ID": "9988",
+            "GITHUB_RUN_ATTEMPT": "2",
+        },
+        workflow_control,
+        (source,),
+        lambda: CommandSecrets("n" * 43, "l" * 43, IDEMPOTENCY_KEY),
+        lambda: NOW,
+    )
+
+    # Then: no preflight or provider fetch occurs before the authoritative claim.
+    assert events.index("claim") < events.index("bind-authorization")
+    assert events.index("bind-authorization") < events.index("preflight")
+    assert events.index("preflight") < events.index("fetch")
+
+
+@pytest.mark.asyncio
 async def test_hard_stop_claim_completes_without_provider_fetch() -> None:
     # Given: the claim persisted an 80-percent hard stop and its quota proof.
     events: list[str] = []

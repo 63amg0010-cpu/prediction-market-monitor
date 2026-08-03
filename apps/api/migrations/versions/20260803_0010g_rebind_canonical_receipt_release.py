@@ -20,6 +20,9 @@ revision: str = "20260803_0010g"
 down_revision: str | None = "20260803_0010f"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+CORRECTION_COMMAND = "release-correction-0010g"
+STATE_BEFORE = "20260803_0010f"
+ENV_PREFIX = "MIGRATION_CANONICAL_REBIND"
 
 
 def _canonical(value: object) -> bytes:
@@ -39,28 +42,30 @@ def _environment(name: str) -> str:
     return value
 
 
+def _input(suffix: str) -> str:
+    return _environment(f"{ENV_PREFIX}_{suffix}")
+
+
 def _load_inputs() -> tuple[ReviewRoot, NoSpendReceipt, bytes, bytes]:
-    root_hash = _environment("MIGRATION_CANONICAL_REBIND_REVIEW_ROOT_SHA256")
-    no_spend_hash = _environment(
-        "MIGRATION_CANONICAL_REBIND_NO_SPEND_RECEIPT_SHA256"
-    )
+    root_hash = _input("REVIEW_ROOT_SHA256")
+    no_spend_hash = _input("NO_SPEND_RECEIPT_SHA256")
     root = parse_body(
-        _environment("MIGRATION_CANONICAL_REBIND_REVIEW_ROOT_B64"),
+        _input("REVIEW_ROOT_B64"),
         root_hash,
         ReviewRoot,
     )
     no_spend = parse_body(
-        _environment("MIGRATION_CANONICAL_REBIND_NO_SPEND_RECEIPT_B64"),
+        _input("NO_SPEND_RECEIPT_B64"),
         no_spend_hash,
         NoSpendReceipt,
     )
     if (
         root.reviewed_sha
-        != _environment("MIGRATION_CANONICAL_REBIND_EXPECTED_COMMIT_SHA")
+        != _input("EXPECTED_COMMIT_SHA")
         or root.approved_plan_sha256
-        != _environment("MIGRATION_CANONICAL_REBIND_EXPECTED_PLAN_SHA256")
+        != _input("EXPECTED_PLAN_SHA256")
         or str(root.activation_nonce)
-        != _environment("MIGRATION_CANONICAL_REBIND_ACTIVATION_NONCE")
+        != _input("ACTIVATION_NONCE")
         or no_spend.reviewed_sha != root.reviewed_sha
         or no_spend.approved_plan_sha256 != root.approved_plan_sha256
         or no_spend.activation_nonce != root.activation_nonce
@@ -184,17 +189,15 @@ def upgrade() -> None:
     )
     receipt_body = {
         "schema_version": 1,
-        "command": "release-correction-0010g",
+        "command": CORRECTION_COMMAND,
         "reviewed_sha": root.reviewed_sha,
         "approved_plan_sha256": root.approved_plan_sha256,
         "approval_round_id": root.approval_round_id,
         "approval_launch_sha256s": list(root.approval_launch_sha256s),
         "activation_nonce": str(root.activation_nonce),
-        "dispatch_nonce": _environment(
-            "MIGRATION_CANONICAL_REBIND_DISPATCH_NONCE"
-        ),
-        "attempt": int(_environment("MIGRATION_CANONICAL_REBIND_ATTEMPT")),
-        "state_before": "20260803_0010f",
+        "dispatch_nonce": _input("DISPATCH_NONCE"),
+        "attempt": int(_input("ATTEMPT")),
+        "state_before": STATE_BEFORE,
         "state_after": revision,
         "accepted": True,
         "terminal_for_attempt": True,
@@ -213,7 +216,7 @@ def upgrade() -> None:
                 attempt, accepted, terminal_for_attempt, retry_permitted,
                 predecessor_receipt_sha256, created_at_db
             ) VALUES (
-                :receipt_sha, :receipt, 'release-correction-0010g',
+                :receipt_sha, :receipt, :command,
                 :reviewed_sha, :plan_sha, :approval_round_id,
                 CAST(:approval_launches AS jsonb), :activation_nonce,
                 CAST(:dispatch_nonce AS uuid), :attempt, true, true, false,
@@ -223,10 +226,9 @@ def upgrade() -> None:
         ),
         {
             **parameters,
-            "attempt": int(_environment("MIGRATION_CANONICAL_REBIND_ATTEMPT")),
-            "dispatch_nonce": _environment(
-                "MIGRATION_CANONICAL_REBIND_DISPATCH_NONCE"
-            ),
+            "command": CORRECTION_COMMAND,
+            "attempt": int(_input("ATTEMPT")),
+            "dispatch_nonce": _input("DISPATCH_NONCE"),
             "receipt": receipt_bytes,
             "receipt_sha": receipt_sha,
         },
@@ -244,23 +246,24 @@ def downgrade() -> None:
             """
             SELECT activation_nonce
             FROM release_receipt_chain
-            WHERE command = 'release-correction-0010g'
+            WHERE command = :command
             """
-        )
-    ).scalar_one()
+        ),
+        {"command": CORRECTION_COMMAND},
+    ).scalar_one_or_none()
+    if correction_nonce is None:
+        return
     unexpected = bind.execute(
         text(
             """
             SELECT count(*)
             FROM release_receipt_chain
             WHERE activation_nonce = :nonce
-              AND command NOT IN (
-                  'review-root', 'no-spend-preflight',
-                  'release-correction-0010g'
-              )
+              AND command NOT IN ('review-root', 'no-spend-preflight')
+              AND command <> :command
             """
         ),
-        {"nonce": correction_nonce},
+        {"command": CORRECTION_COMMAND, "nonce": correction_nonce},
     ).scalar_one()
     if unexpected:
         raise RuntimeError("activation_reservation_rebind_downgrade_dependency")

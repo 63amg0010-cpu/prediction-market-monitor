@@ -29,6 +29,7 @@ from app.collection.adapters.models import (
     NormalizedPost,
     PageTermination,
     PreflightContext,
+    PreflightReady,
     SourceAuthorizationDecision,
     SourceBlockedError,
 )
@@ -174,6 +175,25 @@ async def test_manifold_binding_json_builds_runtime_source_execution() -> None:
     assert len(executions) == 1
     assert executions[0].source_id == source_id
     assert executions[0].platform is SourcePlatform.MANIFOLD
+
+
+@pytest.mark.asyncio
+async def test_manifold_platform_binding_defers_authorization_to_claim() -> None:
+    source_id = UUID("88888888-8888-4888-8888-888888888888")
+    environment = {
+        "MONITOR_SOURCE_IDS": str(source_id),
+        "MONITOR_SOURCE_BINDINGS_JSON": json.dumps(
+            [{"source_id": str(source_id), "platform": "manifold"}]
+        ),
+    }
+
+    async with AsyncExitStack() as stack:
+        executions = await source_executions(environment, stack, lambda: NOW)
+        execution = executions[0]
+        assert execution.authorization is None
+        assert execution.bind_authorization is not None
+        execution.bind_authorization(_authorization())
+        assert isinstance(execution.preflight(), PreflightReady)
 
 
 @pytest.mark.asyncio

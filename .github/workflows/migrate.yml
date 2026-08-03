@@ -206,6 +206,9 @@ jobs:
           elif [ "$OPERATION:$REVISION" = "upgrade:20260803_0010g" ]; then
             test "$ledger_absent" = "f"
             test "$receipt_chain_absent" = "f"
+          elif [ "$OPERATION:$REVISION" = "upgrade:20260803_0010h" ]; then
+            test "$ledger_absent" = "f"
+            test "$receipt_chain_absent" = "f"
           else
             test "$ledger_absent" = "f"
             test "$receipt_chain_absent" = "f"
@@ -441,6 +444,15 @@ jobs:
           MIGRATION_CANONICAL_REBIND_ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
           MIGRATION_CANONICAL_REBIND_DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
           MIGRATION_CANONICAL_REBIND_ATTEMPT: ${{ inputs.attempt }}
+          MIGRATION_ZERO_PROVIDER_REBIND_REVIEW_ROOT_B64: ${{ inputs.review_root_b64 }}
+          MIGRATION_ZERO_PROVIDER_REBIND_REVIEW_ROOT_SHA256: ${{ inputs.review_root_sha256 }}
+          MIGRATION_ZERO_PROVIDER_REBIND_NO_SPEND_RECEIPT_B64: ${{ inputs.no_spend_receipt_b64 }}
+          MIGRATION_ZERO_PROVIDER_REBIND_NO_SPEND_RECEIPT_SHA256: ${{ inputs.no_spend_receipt_sha256 }}
+          MIGRATION_ZERO_PROVIDER_REBIND_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
+          MIGRATION_ZERO_PROVIDER_REBIND_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
+          MIGRATION_ZERO_PROVIDER_REBIND_ACTIVATION_NONCE: ${{ inputs.activation_nonce }}
+          MIGRATION_ZERO_PROVIDER_REBIND_DISPATCH_NONCE: ${{ inputs.dispatch_nonce }}
+          MIGRATION_ZERO_PROVIDER_REBIND_ATTEMPT: ${{ inputs.attempt }}
           MIGRATION_FAILED_ATTEMPT_RECEIPT_B64: ${{ inputs.attempt1_failed_receipt_b64 }}
           MIGRATION_EXPECTED_COMMIT_SHA: ${{ inputs.expected_commit_sha }}
           MIGRATION_EXPECTED_PLAN_SHA256: ${{ inputs.expected_plan_sha256 }}
@@ -460,7 +472,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.MIGRATION_DATABASE_URL }}
       - name: Export canonical correction receipt
-        if: ${{ inputs.operation == 'upgrade' && (inputs.revision == '20260803_0010a' || inputs.revision == '20260803_0010b' || inputs.revision == '20260803_0010c' || inputs.revision == '20260803_0010d' || inputs.revision == '20260803_0010e' || inputs.revision == '20260803_0010f' || inputs.revision == '20260803_0010g') }}
+        if: ${{ inputs.operation == 'upgrade' && (inputs.revision == '20260803_0010a' || inputs.revision == '20260803_0010b' || inputs.revision == '20260803_0010c' || inputs.revision == '20260803_0010d' || inputs.revision == '20260803_0010e' || inputs.revision == '20260803_0010f' || inputs.revision == '20260803_0010g' || inputs.revision == '20260803_0010h') }}
         shell: bash
         run: |
           set -euo pipefail
@@ -472,6 +484,7 @@ jobs:
             20260803_0010e) correction_command="release-correction-0010e" ;;
             20260803_0010f) correction_command="release-correction-0010f" ;;
             20260803_0010g) correction_command="release-correction-0010g" ;;
+            20260803_0010h) correction_command="release-correction-0010h" ;;
             *) exit 2 ;;
           esac
           printf '%s\n' "SELECT convert_from(canonical_receipt, 'UTF8') FROM release_receipt_chain WHERE command = :'correction_command' AND dispatch_nonce = :'dispatch_nonce'::uuid;" \
@@ -488,7 +501,7 @@ jobs:
         env:
           PG_DUMP_DATABASE_URL: ${{ secrets.PG_DUMP_DATABASE_URL }}
       - name: Upload terminal correction receipt
-        if: ${{ inputs.operation == 'upgrade' && (inputs.revision == '20260803_0010a' || inputs.revision == '20260803_0010b' || inputs.revision == '20260803_0010c' || inputs.revision == '20260803_0010d' || inputs.revision == '20260803_0010e' || inputs.revision == '20260803_0010f' || inputs.revision == '20260803_0010g') }}
+        if: ${{ inputs.operation == 'upgrade' && (inputs.revision == '20260803_0010a' || inputs.revision == '20260803_0010b' || inputs.revision == '20260803_0010c' || inputs.revision == '20260803_0010d' || inputs.revision == '20260803_0010e' || inputs.revision == '20260803_0010f' || inputs.revision == '20260803_0010g' || inputs.revision == '20260803_0010h') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: migrate-repair-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
@@ -500,7 +513,7 @@ jobs:
         run: |
           uv run --package monitor-api python apps/api/scripts/workflow_operation_complete.py \
             --api-url "${{ vars.MONITOR_API_URL }}" \
-            --command "${{ inputs.operation == 'upgrade' && 'migrate-0011' || 'migrate-0011-to-0010g' }}" \
+            --command "${{ inputs.operation == 'upgrade' && 'migrate-0011' || (inputs.revision == '20260803_0010g' && 'migrate-0011-to-0010g' || 'migrate-0011-to-0010h') }}" \
             --display-title "migrate-${{ inputs.operation }}-${{ inputs.revision }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}" \
             --evidence "$RUNNER_TEMP/alembic-result.txt" \
             --expected-plan-sha256 "${{ inputs.expected_plan_sha256 }}" \
@@ -516,7 +529,7 @@ jobs:
         if: ${{ inputs.reservation_sha256 != '' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: migrate-${{ inputs.operation == 'upgrade' && '0011' || 'downgrade-0010g' }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
+          name: migrate-${{ inputs.operation == 'upgrade' && '0011' || (inputs.revision == '20260803_0010g' && 'downgrade-0010g' || 'downgrade-0010h') }}-${{ inputs.dispatch_nonce }}-attempt-${{ inputs.attempt }}
           path: |
             ${{ runner.temp }}/operation.json
             ${{ runner.temp }}/workflow-claim-public-receipt.json
